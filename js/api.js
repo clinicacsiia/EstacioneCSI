@@ -1,10 +1,10 @@
 /* ============================================================
-   api.js — como o site fala com o servidor (Google Apps Script)
+   api.js — como o site fala com o servidor (Supabase)
    ------------------------------------------------------------
-   O "servidor" é o Apps Script ligado à planilha do Google
-   (apps-script/Codigo.gs). O endereço dele fica em js/config.js.
-   O Google não devolve códigos HTTP nem cookies, então cada pedido é um
-   POST com { m: método, r: rota, t: token, b: corpo } e a resposta volta
+   O "servidor" é a função estaciona_api do banco (supabase/schema.sql).
+   O endereço e a chave pública ficam em js/config.js.
+   Para o resto do sistema nada mudou: cada pedido é um POST com
+   { m: método, r: rota, t: token, b: corpo } e a resposta volta
    { s: status, c: corpo }. O token do login fica no sessionStorage
    (fechar a aba encerra o login).
    O resto do sistema usa só Api.requisitar (síncrona) e Api.buscar (Promise).
@@ -12,11 +12,13 @@
 (function (global) {
   'use strict';
 
-  var ENDERECO = String(global.ESTACIONA_API || '').replace(/\s+/g, '');
-  var CONFIGURADO = /^https:\/\//i.test(ENDERECO);
+  var URL_BASE = String(global.ESTACIONA_SUPABASE_URL || '').replace(/\s+/g, '').replace(/\/+$/, '');
+  var CHAVE = String(global.ESTACIONA_SUPABASE_KEY || '').replace(/\s+/g, '');
+  var CONFIGURADO = /^https:\/\/[^/]+\.supabase\.co$/i.test(URL_BASE) && CHAVE.length > 10;
+  var ENDERECO = CONFIGURADO ? URL_BASE + '/rest/v1/rpc/estaciona_api' : '';
   var CHAVE_TOKEN = 'estacionamais.token';
-  var MSG_RESPOSTA = 'O servidor do Google não respondeu como esperado. Confira se a implantação do Apps Script está como "Qualquer pessoa" e se o endereço em js/config.js está certo.';
-  var MSG_SEM_CONFIG = 'Servidor não configurado. Cole o endereço /exec do Apps Script em js/config.js (veja apps-script/LEIA-ME.md).';
+  var MSG_RESPOSTA = 'O servidor (Supabase) não respondeu como esperado. Confira a URL e a chave em js/config.js, se o supabase/schema.sql foi executado e se o projeto não está pausado.';
+  var MSG_SEM_CONFIG = 'Servidor não configurado. Preencha a URL e a chave do Supabase em js/config.js (veja supabase/LEIA-ME.md).';
 
   function lerToken() { try { return global.sessionStorage.getItem(CHAVE_TOKEN) || ''; } catch (e) { return ''; } }
   function guardarToken(t) {
@@ -30,7 +32,7 @@
   /** Confere o envelope { s, c } e cuida do token. Devolve { status, corpo }. */
   function abrirEnvelope(url, texto) {
     var env = null;
-    try { env = JSON.parse(texto); } catch (e) { /* não é JSON: página de erro do Google */ }
+    try { env = JSON.parse(texto); } catch (e) { /* não é JSON: erro do gateway (chave errada, projeto pausado...) */ }
     if (!env || typeof env.s !== 'number') return { status: 502, corpo: { ok: false, erro: MSG_RESPOSTA } };
     var c = env.c;
     if (c && typeof c.token === 'string') guardarToken(c.token);
@@ -44,7 +46,8 @@
     var x = new XMLHttpRequest();
     try {
       x.open('POST', ENDERECO, false);
-      x.setRequestHeader('Content-Type', 'text/plain;charset=utf-8'); // "simples": o navegador não faz pré-verificação (o Google não responderia)
+      x.setRequestHeader('Content-Type', 'application/json');
+      x.setRequestHeader('apikey', CHAVE);
       x.send(pedido(metodo, url, corpo));
     } catch (e) { return { status: 0, corpo: null }; }
     if (!x.status) return { status: 0, corpo: null };
@@ -62,7 +65,7 @@
     }
     return global.fetch(ENDERECO, {
       method: 'POST', cache: 'no-store', redirect: 'follow', signal: opc.signal,
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'application/json', 'apikey': CHAVE },
       body: pedido(opc.metodo || 'GET', url, opc.corpo)
     }).then(function (r) { return r.text(); }).then(function (texto) {
       var a = abrirEnvelope(url, texto);
@@ -73,9 +76,9 @@
   global.Api = {
     configurado: CONFIGURADO,
     endereco: ENDERECO,
-    intervaloMs: 8000,          // o Google limita chamadas simultâneas: não sondar a cada 2 s
-    intervaloPainelMs: 10000,
-    limiteBuscaMs: 30000,       // o Google pode demorar alguns segundos na primeira chamada
+    intervaloMs: 3000,          // sondagem "o que mudou?" (leve: só as versões, e baixa só as diferenças)
+    intervaloPainelMs: 3000,
+    limiteBuscaMs: 30000,       // tempo máximo de uma consulta (o Supabase responde em ~0,2 s; só um projeto pausado demora)
     requisitar: requisitar,
     buscar: buscar
   };

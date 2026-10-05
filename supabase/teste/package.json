@@ -1,0 +1,8 @@
+{
+  "name": "estacionamento-csi-testes-sql",
+  "private": true,
+  "type": "module",
+  "description": "Testes do supabase/schema.sql rodando num Postgres de verdade (PGlite, sem internet e sem tocar no seu projeto do Supabase).",
+  "scripts": { "test": "node teste.mjs" },
+  "devDependencies": { "@electric-sql/pglite": "^0.5.8" }
+}

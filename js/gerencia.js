@@ -505,7 +505,7 @@
     const uso = Dados.uso(), ub = Dados.meta.ultimoBackup, legado = Dados.legado();
     secao.innerHTML = `<h2 class="titulo-pagina">Backup e dados</h2>
       <div class="card"><h3 class="mb">Cópia de segurança</h3>
-        <p class="mudo" style="margin-top:0">Os dados ficam guardados <b>na planilha do Google</b>, que também faz uma cópia automática por dia na pasta <code>EstacionaMais - backups</code> do Drive (guarda as últimas 30). Mesmo assim, baixe um backup com frequência e guarde em outro lugar (pendrive, outro e-mail): se a conta do Google tiver problema, as cópias que estão nela ficam indisponíveis junto.</p>
+        <p class="mudo" style="margin-top:0">Os dados ficam guardados <b>no banco de dados (Supabase)</b>. O plano gratuito do Supabase <b>não faz cópia de segurança automática</b>: baixe um backup com frequência (por exemplo, todo dia ao fechar o movimento) e guarde em outro lugar (pendrive, outro e-mail). Assim você nunca perde os dados se algo der errado com a conta ou o projeto.</p>
         <p>Último backup baixado: <b>${ub ? Ui.dataHora(ub) : 'nunca'}</b></p>
         <div class="gap"><button type="button" class="btn btn-primario btn-grande" id="b-exp">⬇ Baixar backup agora</button>
           <label class="btn btn-contorno btn-grande" style="cursor:pointer">⬆ Restaurar de um arquivo<input type="file" id="b-imp" accept=".json,application/json" hidden></label></div>
@@ -516,7 +516,7 @@
       <div class="card"><h3 class="mb">Dados no servidor</h3>
         <p style="margin-top:0"><b>${Dados.tickets.length}</b> ticket(s), <b>${Dados.log.length}</b> registro(s) de auditoria, cerca de <b>${uso.bytes >= 1048576 ? (uso.bytes / 1048576).toFixed(1) + ' MB' : Math.round(uso.bytes / 1024) + ' KB'}</b>.</p></div>
       <div class="card perigo"><h3 class="mb">Zona de perigo</h3>
-        <p style="margin-top:0">Apaga <b>todos</b> os dados do servidor (tickets, caixas, usuários, configurações) para todos os aparelhos. O administrador volta ao usuário <b>admin</b> com a senha inicial (na planilha: menu <b>Estacionamento CSI → Mostrar senha inicial do admin</b>) e os demais usuários precisam ser cadastrados de novo. Antes de apagar, o servidor guarda uma cópia na pasta <code>EstacionaMais - backups</code> do Drive. Útil para limpar dados de teste antes de começar a valer.</p>
+        <p style="margin-top:0">Apaga <b>todos</b> os dados do servidor (tickets, caixas, usuários, configurações) para todos os aparelhos. O administrador volta ao usuário <b>admin</b> com a senha inicial (no Supabase: SQL Editor → <code>select estaciona.senha_admin_inicial();</code>) e os demais usuários precisam ser cadastrados de novo. Antes de apagar, o banco guarda uma cópia interna dos dados atuais (as 5 últimas, na tabela <code>estaciona.copias</code>), mas ela só se recupera pelo Supabase: baixe um backup antes. Útil para limpar dados de teste antes de começar a valer.</p>
         <button type="button" class="btn btn-perigo" id="b-zerar">🗑️ Apagar tudo e recomeçar</button></div>`;
 
     const btLegado = $('#b-legado');
