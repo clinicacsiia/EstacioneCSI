@@ -7,6 +7,10 @@
    manobrista e atendente podem fazer. Só acessa a tela admin.html.
    Cada ação do sistema tem uma permissão (tabela PERMISSOES); o
    admin pode ajustá-las por perfil (config.permissoes).
+   SENHA TEMPORÁRIA: a senha que o admin define ao cadastrar alguém (ou ao
+   redefinir a senha) é temporária: o usuário marca "trocarSenha" e, no
+   primeiro acesso, só consegue escolher a própria senha (o servidor
+   bloqueia todo o resto até lá).
    Algumas ações do CAIXA exigem a senha de um gerente na hora
    ("autorização de supervisor") — configurável na Gerência.
 
@@ -167,6 +171,15 @@
   // A senha vai em UTF-8 para aceitar acentos (o sha256 acima só lê bytes).
   function hashSenha(senha, salt) { return sha256(unescape(encodeURIComponent(salt + ':' + senha))); }
 
+  // Sem 0/O, 1/l/I: a senha temporária costuma ser ditada ou lida num papel.
+  var ALFABETO_TEMP = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  function senhaTemporaria() {
+    var a = new Uint8Array(10), r = '';
+    try { global.crypto.getRandomValues(a); } catch (e) { for (var k = 0; k < a.length; k++) a[k] = Math.floor(Math.random() * 256); }
+    for (var i = 0; i < a.length; i++) r += ALFABETO_TEMP.charAt(a[i] % ALFABETO_TEMP.length);
+    return r;
+  }
+
   function normalizarLogin(s) { return String(s || '').trim().toLowerCase(); }
   function validarLogin(s) {
     return /^[a-z0-9._-]{3,20}$/.test(s) ? null : 'O usuário deve ter de 3 a 20 caracteres (letras sem acento, números, ponto, hífen ou _).';
@@ -205,6 +218,27 @@
       return senha.length >= 6 && senha.length <= 40 ? null : 'A senha deve ter de 6 a 40 caracteres.';
     },
 
+    gerarSenhaTemporaria: senhaTemporaria,
+
+    /** O usuário logado precisa escolher uma senha nova antes de usar o sistema (senha temporária)? */
+    precisaTrocarSenha: function (u) { return !!u && u.trocarSenha === true; },
+
+    /** Primeiro acesso: troca a senha temporária pela escolhida. O servidor confere tudo de novo. */
+    trocarSenhaTemporaria: function (nova, confirmacao) {
+      var u = Auth.atual();
+      if (!u) return { ok: false, erro: 'Sessão expirada. Entre novamente.' };
+      nova = String(nova || '');
+      var err = Auth.validarNovaSenha(nova); if (err) return { ok: false, erro: err };
+      if (nova !== String(confirmacao || '')) return { ok: false, erro: 'A confirmação não é igual à senha nova.' };
+      var r = Dados.requisitar('POST', '/api/senha/trocar', { nova: nova });
+      if (r.status === 401) { Auth.sair(true); return { ok: false, erro: 'Sessão expirada. Entre novamente.' }; }
+      if (!r.corpo || !r.corpo.ok) return { ok: false, erro: Dados.erroDe(r) };
+      Dados.iniciar(); // liberado: agora carrega todos os dados
+      var depois = Auth.atual();
+      if (!depois) return { ok: false, erro: Api.MSG_ERRO };
+      return { ok: true, usuario: depois };
+    },
+
     criarUsuario: function (d) {
       if (!Auth.pode('admin.usuarios')) return { ok: false, erro: 'Só o administrador cadastra usuários.' };
       var nome = String(d.nome || '').trim().replace(/\s+/g, ' ');
@@ -215,7 +249,7 @@
       if (PERFIS_OPERACIONAIS.indexOf(d.perfil) === -1) return { ok: false, erro: 'Escolha o perfil do usuário.' };
       var errSenha = Auth.validarNovaSenha(d.senha); if (errSenha) return { ok: false, erro: errSenha };
       var salt = novoSalt();
-      var usuario = { id: Dados.novoId('u'), nome: nome, login: login, perfil: d.perfil, salt: salt, hash: hashSenha(d.senha, salt), ativo: true, criadoEm: Date.now(), ultimoLogin: null };
+      var usuario = { id: Dados.novoId('u'), nome: nome, login: login, perfil: d.perfil, salt: salt, hash: hashSenha(d.senha, salt), trocarSenha: true, ativo: true, criadoEm: Date.now(), ultimoLogin: null };
       try { Dados.mudar('usuarios', function (l) { l.push(usuario); }); } catch (e) { return { ok: false, erro: e.message }; }
       Auth.registrar('usuario_criado', nome + ' (' + login + ' · ' + PERFIS[d.perfil].rotulo + ')');
       return { ok: true, usuario: usuario };
@@ -238,6 +272,9 @@
         if (PERFIS_OPERACIONAIS.indexOf(perfil) === -1) return { ok: false, erro: 'Perfil inválido.' };
       }
       if (d.senha) { var e = Auth.validarNovaSenha(d.senha); if (e) return { ok: false, erro: e }; }
+      // senha definida pelo admin para OUTRA pessoa é temporária; o admin trocando a própria senha não precisa trocar de novo
+      var eu = Auth.atual();
+      var temporaria = !!d.senha && !(eu && eu.id === id);
       var eraGerente = alvo.ativo && alvo.perfil === 'gerente';
       var seraGerente = ativo && perfil === 'gerente';
       if (eraGerente && !seraGerente) {
@@ -248,10 +285,10 @@
         Dados.mudar('usuarios', function (l) {
           var u = l.filter(function (x) { return x.id === id; })[0];
           u.nome = nome; u.login = login; u.perfil = perfil; u.ativo = ativo;
-          if (d.senha) { u.salt = novoSalt(); u.hash = hashSenha(d.senha, u.salt); }
+          if (d.senha) { u.salt = novoSalt(); u.hash = hashSenha(d.senha, u.salt); u.trocarSenha = temporaria; }
         });
       } catch (e) { return { ok: false, erro: e.message }; }
-      Auth.registrar('usuario_alterado', nome + ' (' + login + ')' + (d.senha ? ' (senha redefinida)' : '') + (ativo ? '' : ' (desativado)'));
+      Auth.registrar('usuario_alterado', nome + ' (' + login + ')' + (d.senha ? (temporaria ? ' (senha temporária definida)' : ' (senha redefinida)') : '') + (ativo ? '' : ' (desativado)'));
       return { ok: true };
     },
 
@@ -340,6 +377,10 @@
     exigirPagina: function (pagina) {
       var u = Auth.atual();
       if (!u) {
+        global.location.replace('index.html');
+        return null;
+      }
+      if (Auth.precisaTrocarSenha(u)) { // senha temporária: só a tela de troca (no login) está liberada
         global.location.replace('index.html');
         return null;
       }
