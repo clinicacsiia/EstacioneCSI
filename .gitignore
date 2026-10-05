@@ -1,5 +1,5 @@
 # DADOS DE CLIENTES (CPF/CNPJ, placas, senhas em hash): NUNCA no GitHub.
-# (Os dados ficam na planilha do Google; estas linhas protegem contra backups baixados por engano.)
+# (Os dados ficam no banco do Supabase; estas linhas protegem contra backups baixados por engano.)
 dados/
 backups/
 backup-*.json
@@ -14,6 +14,9 @@ senha-admin-inicial.txt
 *.pem
 *.key
 .env
+
+# Dependências dos testes
+node_modules/
 
 # Editor / sistema
 .vscode/

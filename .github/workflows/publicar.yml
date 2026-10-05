@@ -1,7 +1,7 @@
 name: Publicar no GitHub Pages
 
 # Toda vez que você salva (commit) na branch main, o site é conferido e publicado sozinho.
-# Só vão para o ar as telas (html, css, js). O Apps Script (apps-script/) e os testes ficam de fora: o Apps Script você cola na planilha do Google.
+# Só vão para o ar as telas (html, css, js). O banco (supabase/) e os testes ficam de fora: o schema.sql você cola no Supabase.
 on:
   push:
     branches: [main]
@@ -28,15 +28,17 @@ jobs:
       - name: Conferir a sintaxe do JavaScript (evita publicar o site quebrado)
         run: |
           for f in js/*.js; do node --check "$f"; done
-          cp apps-script/Codigo.gs "$RUNNER_TEMP/Codigo.js"
-          node --check "$RUNNER_TEMP/Codigo.js"
 
-      - name: Avisar se o endereço do Google ainda não foi configurado
+      - name: Avisar se a URL/chave do Supabase ainda não foram configuradas
         run: |
-          if grep -Eq "ESTACIONA_API *= *'https://script\.google\.com/macros/s/[^']+/exec'" js/config.js; then
-            echo "js/config.js aponta para o Google Apps Script."
+          if grep -Eq "ESTACIONA_SUPABASE_URL *= *'https://[a-z0-9]+\.supabase\.co'" js/config.js && grep -Eq "ESTACIONA_SUPABASE_KEY *= *'sb_publishable_[^']+'" js/config.js; then
+            echo "js/config.js aponta para o Supabase."
           else
-            echo "::warning file=js/config.js::ESTACIONA_API está vazio: o site vai abrir, mas sem servidor (nem login). Cole o endereço /exec do Apps Script (veja apps-script/LEIA-ME.md)."
+            echo "::warning file=js/config.js::URL ou chave do Supabase não configuradas: o site vai abrir, mas sem banco de dados (nem login). Preencha js/config.js (veja supabase/LEIA-ME.md)."
+          fi
+          if grep -Eq "sb_secret_[A-Za-z0-9_-]{8,}" js/config.js; then
+            echo "::error file=js/config.js::Chave SECRETA no js/config.js! Remova agora: só a chave publishable pode ficar no site."
+            exit 1
           fi
 
       - name: Montar o site (só o que o navegador precisa)

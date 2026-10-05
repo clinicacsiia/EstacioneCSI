@@ -1,13 +1,16 @@
 /* ============================================================
-   config.js — ONDE FICA O SERVIDOR DO SISTEMA
+   config.js — ONDE FICA O BANCO DE DADOS DO SISTEMA (Supabase)
    ------------------------------------------------------------
-   Cole aqui o endereço /exec do seu Google Apps Script
-   (passo a passo em apps-script/LEIA-ME.md, Parte 3).
+   Preencha as duas linhas abaixo com os dados do seu projeto:
+     Supabase > Project Settings > API
+       - Project URL                      (ex.: https://abcdefgh.supabase.co)
+       - Publishable key (sb_publishable_...)
 
-   Exemplo:
-   window.ESTACIONA_API = 'https://script.google.com/macros/s/AKfycb.../exec';
-
-   Este endereço pode ficar público no GitHub: quem não tem usuário e
-   senha do sistema não consegue ler nem gravar nada.
+   Pode ficar público no GitHub: a chave "publishable" foi feita para ficar no
+   navegador e, sozinha, NÃO dá acesso a nenhum dado. As tabelas ficam trancadas e a
+   única porta de entrada (a função estaciona_api) exige usuário e senha do sistema.
+   NUNCA coloque aqui a chave "secret" nem a "service_role".
+   Passo a passo: supabase/LEIA-ME.md
    ============================================================ */
-window.ESTACIONA_API = 'https://script.google.com/macros/s/AKfycbz7aPZbIQ7x9Ub8drExT9BwyRiduZI1QomQ16piPklVz397qQRIZx3zj2Cgu2ox3lA_Ug/exec';
+window.ESTACIONA_SUPABASE_URL = 'https://fzrzkcqeqptgzfrchuod.supabase.co';
+window.ESTACIONA_SUPABASE_KEY = 'sb_publishable_iC8RJosZ3qtembtNw0QkeA_HCEi975H';

@@ -1,0 +1,29 @@
+name: Testes do banco (SQL)
+
+# Roda os testes do supabase/schema.sql num Postgres de verdade (PGlite) sempre que o SQL ou os testes mudam.
+# Não mexe no seu projeto do Supabase e não impede a publicação do site.
+on:
+  push:
+    paths: ['supabase/**', '.github/workflows/testes.yml']
+  pull_request:
+    paths: ['supabase/**', '.github/workflows/testes.yml']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  testes-sql:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supabase/teste
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: supabase/teste/package-lock.json
+      - run: npm ci
+      - run: npm test

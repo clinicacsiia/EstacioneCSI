@@ -2,7 +2,7 @@
    nota.js — emissão de nota fiscal de serviço (NFS-e)
    ------------------------------------------------------------
    A tela só pede os dados do cliente (CPF/CNPJ e nome) e chama o
-   servidor (Google Apps Script). Hoje só emite nota de TESTE; a emissão
+   servidor (Supabase). Hoje só emite nota de TESTE; a emissão
    real na prefeitura exigiria certificado digital num servidor próprio.
    A nota emitida fica gravada no pagamento (pagamento.nota).
    O CPF/CNPJ completo NÃO é guardado no navegador, só mascarado.

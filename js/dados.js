@@ -2,7 +2,7 @@
    dados.js — camada de dados do Estacionamento CSI (servidor)
    ------------------------------------------------------------
    Tudo que o sistema grava passa por aqui. Os dados ficam no
-   servidor (planilha do Google, via Apps Script) e
+   servidor (banco Supabase) e
    todos os dispositivos veem a mesma coisa. A API para o resto do
    sistema é a mesma de sempre (Dados.tickets, Dados.mudar, ...).
 
@@ -16,15 +16,15 @@
      busque o registro de novo pelo id.
 
    COMO FUNCIONA:
-   - O "servidor" é o Google Apps Script + Planilhas (apps-script/Codigo.gs;
+   - O "servidor" é o banco Supabase (supabase/schema.sql;
      endereço em js/config.js, transporte em js/api.js).
    - Cada coleção tem uma versão no servidor. O navegador guarda uma
-     cópia (cache) e a cada ~2,5 s (8 s no Google) pergunta quais versões mudaram e baixa
+     cópia (cache) e a cada ~3 s pergunta quais versões mudaram e baixa
      só as diferenças (deltas). Mudanças de outras pessoas chegam por
      aqui e disparam Dados.aoMudar(fn) com externo = true.
    - Gravar é síncrono (XMLHttpRequest): o resto do sistema continua
      simples, sem async/await. Isso pede boa conexão com a internet.
-   - Os deltas (aplicarDelta / calcularDelta) espelham aplicar_ em apps-script/Codigo.gs.
+   - Os deltas (aplicarDelta / calcularDelta) espelham a função estaciona.aplicar em supabase/schema.sql.
    ============================================================ */
 (function (global) {
   'use strict';
@@ -107,7 +107,7 @@
     return Array.isArray(v) ? v : padrao(nome);
   }
 
-  // ---------- Deltas (espelham aplicar_ em apps-script/Codigo.gs) ----------
+  // ---------- Deltas (espelham estaciona.aplicar em supabase/schema.sql) ----------
   function chave(x) {
     return x && (typeof x.id === 'string' || typeof x.id === 'number') ? String(x.id) : null;
   }
@@ -168,7 +168,7 @@
   }
 
   // ---------- Rede ----------
-  /** Chamada síncrona ao servidor (Google Apps Script: veja js/api.js). Devolve { status, corpo } (status 0 = sem conexão). */
+  /** Chamada síncrona ao servidor (Supabase: veja js/api.js). Devolve { status, corpo } (status 0 = sem conexão). */
   var requisitar = global.Api.requisitar;
 
   function sessaoExpirada() {
