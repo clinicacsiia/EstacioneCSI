@@ -23,7 +23,7 @@
     ['Vermelho', '#dc2626'], ['Azul', '#2563eb'], ['Verde', '#16a34a'], ['Amarelo', '#facc15'],
     ['Marrom', '#7c4a25'], ['Outra', 'linear-gradient(135deg,#f472b6,#60a5fa)']
   ];
-  var AVARIAS = ['Arranhão', 'Amassado', 'Vidro / farol', 'Pneu / roda', 'Retrovisor', 'Objeto de valor no carro'];
+  var AVARIAS = ['Arranhão', 'Amassado', 'Vidro / farol', 'Pneu / roda', 'Retrovisor']; // objetos de valor têm campo próprio (ticket.objetosValor)
   var MOTIVOS_DESCONTO = ['Convênio / lojista', 'Cortesia da gerência', 'Cliente frequente / VIP', 'Erro operacional', 'Outro'];
   var ATIVOS = ['ESTACIONADO', 'PAGO', 'A_CAMINHO'];
 
@@ -73,6 +73,27 @@
     if (/^[A-Z]{3}\d[A-Z]\d{2}$/.test(k)) return { ok: true, placa: k, formato: 'Mercosul' };
     if (livre && k.length >= 3 && k.length <= 10) return { ok: true, placa: k, formato: 'Outro formato' };
     return { ok: false, erro: 'Placa inválida. Use ABC-1234 (antiga) ou ABC1D23 (Mercosul).' };
+  }
+
+
+  // ---------- CPF ----------
+  function soDigitos(v) { return String(v == null ? '' : v).replace(/\D/g, ''); }
+
+  function cpfValido(c) {
+    c = soDigitos(c);
+    if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
+    for (var t = 9; t < 11; t++) {
+      var soma = 0;
+      for (var i = 0; i < t; i++) soma += Number(c.charAt(i)) * (t + 1 - i);
+      if ((soma * 10) % 11 % 10 !== Number(c.charAt(t))) return false;
+    }
+    return true;
+  }
+
+  /** "12345678909" → "123.456.789-09" (aceita digitação parcial). */
+  function formatarCpf(v) {
+    return soDigitos(v).slice(0, 11)
+      .replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1-$2');
   }
 
   // ---------- Mensalista ----------
@@ -197,6 +218,41 @@
     return r;
   }
 
+  // ---------- Fechamento do manobrista ----------
+  /**
+   * Período que o manobrista pode consultar no fechamento: só 'hoje' ou 'ontem' (qualquer outro valor vale 'hoje').
+   * Devolve { dia, ini, fim } em ms, no horário do aparelho.
+   */
+  function periodoFechamento(dia, agora) {
+    agora = agora || Date.now();
+    var hoje = inicioDoDia(agora);
+    if (dia !== 'ontem') return { dia: 'hoje', ini: hoje, fim: fimDoDia(agora) };
+    var d = new Date(hoje); d.setDate(d.getDate() - 1);
+    return { dia: 'ontem', ini: d.getTime(), fim: hoje - 1 };
+  }
+
+  /**
+   * O que UM manobrista fez no período: entradas que registrou, buscas e entregas que fez.
+   * Só entram veículos em que ele mesmo agiu (e só as ações dele): o movimento dos colegas nunca aparece.
+   * Devolve { itens:[{ ticket, acoes:[{tipo,em}], ultimaEm }] (mais recente primeiro), entradas, buscas, entregas }.
+   */
+  function atendimentosManobrista(tickets, usuarioId, ini, fim) {
+    var r = { itens: [], entradas: 0, buscas: 0, entregas: 0 };
+    if (!usuarioId) return r;
+    function dentro(ms) { return typeof ms === 'number' && ms >= ini && ms <= fim; }
+    tickets.forEach(function (t) {
+      var acoes = [];
+      if (t.entradaPor === usuarioId && dentro(t.entradaEm)) { acoes.push({ tipo: 'entrada', em: t.entradaEm }); r.entradas++; }
+      if (t.buscaPor === usuarioId && dentro(t.buscaEm)) { acoes.push({ tipo: 'busca', em: t.buscaEm }); r.buscas++; }
+      if (t.entreguePor === usuarioId && dentro(t.entregueEm)) { acoes.push({ tipo: 'entrega', em: t.entregueEm }); r.entregas++; }
+      if (!acoes.length) return;
+      acoes.sort(function (a, b) { return a.em - b.em; });
+      r.itens.push({ ticket: t, acoes: acoes, ultimaEm: acoes[acoes.length - 1].em });
+    });
+    r.itens.sort(function (a, b) { return b.ultimaEm - a.ultimaEm; });
+    return r;
+  }
+
   // ---------- Relatório por período ----------
   function resumoPeriodo(tickets, ini, fim) {
     var r = {
@@ -240,12 +296,13 @@
     MOTIVOS_DESCONTO: MOTIVOS_DESCONTO, ATIVOS: ATIVOS,
     moeda: moeda, parseMoeda: parseMoeda, duracao: duracao,
     hojeISO: hojeISO, isoParaMs: isoParaMs, inicioDoDia: inicioDoDia, fimDoDia: fimDoDia,
-    chavePlaca: chavePlaca, validarPlaca: validarPlaca, mensalistaVigente: mensalistaVigente,
+    chavePlaca: chavePlaca, validarPlaca: validarPlaca, cpfValido: cpfValido, formatarCpf: formatarCpf, mensalistaVigente: mensalistaVigente,
     calcularTarifa: calcularTarifa, calcularDesconto: calcularDesconto, calcularDevido: calcularDevido,
     pagamentosValidos: pagamentosValidos, totalQuitado: totalQuitado, totalRecebido: totalRecebido,
     ultimoPagamento: ultimoPagamento, pagamentoVencido: pagamentoVencido,
     estaAtivo: estaAtivo, ativos: ativos, ocupacao: ocupacao,
     nomePatio: nomePatio, nomeCategoria: nomeCategoria, descricaoVeiculo: descricaoVeiculo, localVeiculo: localVeiculo,
-    limparCodigo: limparCodigo, buscar: buscar, resumoCaixa: resumoCaixa, resumoPeriodo: resumoPeriodo
+    limparCodigo: limparCodigo, buscar: buscar, resumoCaixa: resumoCaixa, resumoPeriodo: resumoPeriodo,
+    periodoFechamento: periodoFechamento, atendimentosManobrista: atendimentosManobrista
   };
 })(window);

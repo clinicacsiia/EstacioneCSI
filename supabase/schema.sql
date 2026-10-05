@@ -771,7 +771,7 @@ exception
       'c', jsonb_build_object('ok', false, 'erro', e ->> 'erro') || coalesce(e -> 'extra', '{}'::jsonb));
   when others then
     raise warning 'estaciona_api: % (%)', sqlerrm, sqlstate;
-    return jsonb_build_object('s', 500, 'c', jsonb_build_object('ok', false, 'erro', 'Erro inesperado no servidor. Veja Logs > Postgres no Supabase.'));
+    return jsonb_build_object('s', 500, 'c', jsonb_build_object('ok', false, 'erro', 'Ocorreu um erro.'));
 end $$;
 
 revoke all on function public.estaciona_api(text, text, text, jsonb) from public;

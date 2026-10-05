@@ -17,8 +17,14 @@
   var CONFIGURADO = /^https:\/\/[^/]+\.supabase\.co$/i.test(URL_BASE) && CHAVE.length > 10;
   var ENDERECO = CONFIGURADO ? URL_BASE + '/rest/v1/rpc/estaciona_api' : '';
   var CHAVE_TOKEN = 'estacionamais.token';
-  var MSG_RESPOSTA = 'O servidor (Supabase) não respondeu como esperado. Confira a URL e a chave em js/config.js, se o supabase/schema.sql foi executado e se o projeto não está pausado.';
-  var MSG_SEM_CONFIG = 'Servidor não configurado. Preencha a URL e a chave do Supabase em js/config.js (veja supabase/LEIA-ME.md).';
+  // Quando algo falha, a tela mostra só isto. O detalhe técnico vai para o console do navegador (F12), para quem for investigar.
+  var MSG_ERRO = 'Ocorreu um erro.';
+
+  function falha(detalhe) {
+    if (global.console) global.console.error('[Estacionamento] ' + detalhe);
+  }
+
+  var SEM_CONFIG = 'Servidor não configurado. Preencha a URL e a chave do Supabase em js/config.js (veja supabase/LEIA-ME.md).';
 
   function lerToken() { try { return global.sessionStorage.getItem(CHAVE_TOKEN) || ''; } catch (e) { return ''; } }
   function guardarToken(t) {
@@ -33,7 +39,10 @@
   function abrirEnvelope(url, texto) {
     var env = null;
     try { env = JSON.parse(texto); } catch (e) { /* não é JSON: erro do gateway (chave errada, projeto pausado...) */ }
-    if (!env || typeof env.s !== 'number') return { status: 502, corpo: { ok: false, erro: MSG_RESPOSTA } };
+    if (!env || typeof env.s !== 'number') {
+      falha('O servidor (Supabase) não respondeu como esperado em ' + url + '. Confira a URL e a chave em js/config.js, se o supabase/schema.sql foi executado e se o projeto não está pausado.');
+      return { status: 502, corpo: { ok: false, erro: MSG_ERRO } };
+    }
     var c = env.c;
     if (c && typeof c.token === 'string') guardarToken(c.token);
     if (env.s === 401 || url === '/api/logout') guardarToken('');
@@ -42,7 +51,7 @@
 
   /** Chamada síncrona. Devolve { status, corpo } (status 0 = sem conexão). */
   function requisitar(metodo, url, corpo) {
-    if (!CONFIGURADO) return { status: 503, corpo: { ok: false, erro: MSG_SEM_CONFIG } };
+    if (!CONFIGURADO) { falha(SEM_CONFIG); return { status: 503, corpo: { ok: false, erro: MSG_ERRO } }; }
     var x = new XMLHttpRequest();
     try {
       x.open('POST', ENDERECO, false);
@@ -61,7 +70,8 @@
   function buscar(url, opc) {
     opc = opc || {};
     if (!CONFIGURADO) {
-      return Promise.resolve({ ok: false, status: 503, json: function () { return Promise.resolve({ ok: false, erro: MSG_SEM_CONFIG }); } });
+      falha(SEM_CONFIG);
+      return Promise.resolve({ ok: false, status: 503, json: function () { return Promise.resolve({ ok: false, erro: MSG_ERRO }); } });
     }
     return global.fetch(ENDERECO, {
       method: 'POST', cache: 'no-store', redirect: 'follow', signal: opc.signal,
@@ -76,6 +86,8 @@
   global.Api = {
     configurado: CONFIGURADO,
     endereco: ENDERECO,
+    MSG_ERRO: MSG_ERRO,
+    falha: falha,
     intervaloMs: 3000,          // sondagem "o que mudou?" (leve: só as versões, e baixa só as diferenças)
     intervaloPainelMs: 3000,
     limiteBuscaMs: 30000,       // tempo máximo de uma consulta (o Supabase responde em ~0,2 s; só um projeto pausado demora)

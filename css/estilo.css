@@ -347,6 +347,8 @@ body.painel { background: #0b1220; color: #fff; height: 100vh; overflow: hidden;
 .imp .corte { border-top: 2px dashed #000; margin: 10px 0 6px; text-align: center; font-size: 10px; }
 .imp .lin { display: flex; justify-content: space-between; gap: 6px; }
 .imp svg { display: block; margin: 4px auto; max-width: 100%; }
+/* Ticket mostrado na tela (visualizador): o mesmo desenho do papel, sobre fundo branco */
+.ticket-tela { background: #fff; border: 1px solid var(--cinza-300); border-radius: 8px; padding: 14px; max-width: 320px; margin: 0 auto; overflow-x: auto; }
 
 /* ---------- Telas estreitas ---------- */
 @media (max-width: 640px) {
@@ -354,6 +356,14 @@ body.painel { background: #0b1220; color: #fff; height: 100vh; overflow: hidden;
   .topo-pagina, .topo-usuario small { display: none; }
   .topo-links { display: none; }
   .btn-impressora .rot { display: none; }
+  /* O cabeçalho nunca pode passar da largura do celular: se passar, o navegador alarga a página e tudo que é centralizado
+     (janelas, avisos, o ticket na tela) sai cortado à direita. O nome do estabelecimento e o do usuário encurtam com "…". */
+  .topo { gap: 8px; padding: 0 10px; }
+  .marca { flex: 1 1 auto; min-width: 0; font-size: 1rem; }
+  .marca span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .topo-dir { flex: 0 0 auto; gap: 8px; }
+  .topo-usuario { max-width: 96px; }
+  .topo-usuario strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .grade-4 { grid-template-columns: repeat(2, 1fr); }
   .item { flex-wrap: wrap; }
   .item-acoes { flex-direction: row; width: 100%; }

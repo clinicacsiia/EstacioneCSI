@@ -296,8 +296,7 @@
     validarSenha: function (id, senha) {
       var r = Dados.requisitar('POST', '/api/senha/verificar', { id: id, senha: String(senha) });
       if (r.status === 401) { Auth.sair(true); return { ok: false, erro: 'Sessão expirada. Entre novamente.' }; }
-      if (r.status === 0) return { ok: false, erro: 'Sem conexão com o servidor.' };
-      if (!r.corpo || !r.corpo.ok) return { ok: false, bloqueado: !!(r.corpo && r.corpo.bloqueado), erro: (r.corpo && r.corpo.erro) || 'Não foi possível verificar a senha.' };
+      if (!r.corpo || !r.corpo.ok) return { ok: false, bloqueado: !!(r.corpo && r.corpo.bloqueado), erro: Dados.erroDe(r) };
       var u = Dados.usuarios.filter(function (x) { return x.id === id; })[0];
       return u ? { ok: true, usuario: u } : { ok: false, erro: 'Usuário não encontrado.' };
     },
@@ -305,11 +304,13 @@
     /** Entrada pela tela de login: usuário (login) + senha, conferidos pelo servidor. */
     entrar: function (login, senha) {
       var r = Dados.requisitar('POST', '/api/login', { login: normalizarLogin(login), senha: String(senha) });
-      if (r.status === 0) return { ok: false, erro: 'Não foi possível falar com o servidor. Confira a conexão.' };
-      if (!r.corpo || !r.corpo.ok) return { ok: false, bloqueado: !!(r.corpo && r.corpo.bloqueado), erro: (r.corpo && r.corpo.erro) || 'Não foi possível entrar (erro ' + r.status + ').' };
+      if (!r.corpo || !r.corpo.ok) return { ok: false, bloqueado: !!(r.corpo && r.corpo.bloqueado), erro: Dados.erroDe(r) };
       Dados.iniciar(); // agora com sessão: carrega os dados
       var u = Auth.atual();
-      if (!u) return { ok: false, erro: 'O navegador não guardou o login. Libere o armazenamento deste site (não use aba anônima restrita) e tente de novo.' };
+      if (!u) {
+        Api.falha('O navegador não guardou o login. Libere o armazenamento deste site (não use aba anônima restrita).');
+        return { ok: false, erro: Api.MSG_ERRO };
+      }
       return { ok: true, usuario: u };
     },
 

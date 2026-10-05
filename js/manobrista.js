@@ -1,6 +1,6 @@
 /* ============================================================
    manobrista.js — tela de quem trabalha na ponta (celular)
-   Três abas: ENTRADA · BUSCAR (fila) · PÁTIO
+   Quatro abas: ENTRADA · BUSCAR (fila) · PÁTIO · FECHAMENTO
    Regra de ouro: só a placa é obrigatória; o resto é toque.
    ============================================================ */
 (function () {
@@ -16,7 +16,7 @@
 
   $('#lista-modelos').innerHTML = Ficha.MODELOS.map(m => `<option value="${m}">`).join('');
 
-  const est = { categoria: 'carro', cor: '', patio: null, avarias: [], filtroPatio: 'todos' };
+  const est = { categoria: 'carro', cor: '', patio: null, avarias: [], filtroPatio: 'todos', diaFechamento: 'hoje' };
   let vistos = null; // tickets pagos já conhecidos (para avisar quando entra um novo)
 
   // ============================================================
@@ -28,6 +28,7 @@
     try { sessionStorage.setItem('estacionamais.abaManobrista', nome); } catch (e) { /* ok */ }
     if (nome === 'entrada') $('#placa').focus();
     if (nome === 'patio') renderPatio();
+    if (nome === 'fechamento') renderFechamento();
   }
   Ui.$$('.tabbar button').forEach(b => b.addEventListener('click', () => mostrarAba(b.dataset.aba)));
 
@@ -62,7 +63,6 @@
   function renderAvarias() {
     $('#grupo-avarias').innerHTML = R.AVARIAS.map(a =>
       `<button type="button" class="chip ${est.avarias.includes(a) ? 'sel' : ''}" data-avaria="${esc(a)}">${esc(a)}</button>`).join('');
-    $('#resumo-extras').textContent = est.avarias.length ? '· ' + est.avarias.length + ' marcada(s)' : '· nenhuma marcada';
   }
 
   $('#grupo-categoria').addEventListener('click', ev => { const b = ev.target.closest('[data-cat]'); if (b) { est.categoria = b.dataset.cat; renderCategorias(); } });
@@ -106,6 +106,18 @@
   });
   chkLivre.addEventListener('change', atualizarInfoPlaca);
 
+  // ----- CPF (opcional, mas se vier preenchido tem que ser válido) -----
+  const inCpf = $('#cpf');
+  function atualizarInfoCpf() {
+    const info = $('#cpf-info'), d = inCpf.value.replace(/\D/g, '');
+    if (!d) { info.className = 'dica'; info.textContent = ''; return; }
+    if (d.length < 11) { info.className = 'dica'; info.textContent = 'Digite os 11 números do CPF.'; return; }
+    const ok = R.cpfValido(d);
+    info.className = ok ? 'dica ok' : 'dica erro';
+    info.textContent = ok ? '✔ CPF válido' : 'CPF inválido. Confira os números.';
+  }
+  inCpf.addEventListener('input', () => { inCpf.value = R.formatarCpf(inCpf.value); atualizarInfoCpf(); });
+
   // ----- envio -----
   const form = $('#form-entrada');
   form.addEventListener('keydown', ev => {
@@ -118,11 +130,12 @@
     const r = Op.registrarEntrada({
       placa: inPlaca.value, placaLivre: chkLivre.checked, categoria: est.categoria,
       modelo: $('#modelo').value, cor: est.cor, patio: est.patio, vaga: $('#vaga').value,
-      telefone: $('#telefone').value, avarias: est.avarias, obs: $('#obs').value
+      telefone: $('#telefone').value, cpf: inCpf.value, avarias: est.avarias, avariasDescricao: $('#avarias-desc').value,
+      objetosValor: $('#objetos-valor').value, obs: $('#obs').value
     });
     if (!r.ok) {
       Ui.toast(r.erro, 'erro');
-      inPlaca.focus();
+      (r.campo === 'cpf' ? inCpf : inPlaca).focus();
       return;
     }
     if (r.aviso) Ui.toast(r.aviso, 'aviso', 6500);
@@ -134,9 +147,10 @@
   function limparFormulario() {
     inPlaca.value = ''; chkLivre.checked = false;
     $('#modelo').value = ''; $('#vaga').value = ''; $('#telefone').value = ''; $('#obs').value = '';
+    inCpf.value = ''; $('#avarias-desc').value = ''; $('#objetos-valor').value = '';
     est.cor = ''; est.avarias = []; est.categoria = 'carro';
     $('#det-extras').open = false;
-    renderCategorias(); renderCores(); renderAvarias(); renderPatios(); atualizarInfoPlaca();
+    renderCategorias(); renderCores(); renderAvarias(); renderPatios(); atualizarInfoPlaca(); atualizarInfoCpf();
     inPlaca.focus();
   }
 
@@ -145,9 +159,11 @@
     box.hidden = false;
     box.innerHTML = `<div class="gap"><div class="espaco"><b>✔ Ticket #${esc(t.id)}</b> · <span class="mono negrito">${esc(t.placa)}</span><br>
       <span class="mudo pequeno">${esc(R.localVeiculo(t, Dados.config))}${mens ? ' · MENSALISTA (sem cobrança)' : ''}</span></div>
+      <button type="button" class="btn btn-sm btn-contorno" data-ver="${esc(t.id)}">👁 Ver</button>
       <button type="button" class="btn btn-sm btn-contorno" data-reimp="${esc(t.id)}">🖨️ Reimprimir</button></div>`;
   }
   $('#ultimo-ticket').addEventListener('click', ev => {
+    const v = ev.target.closest('[data-ver]'); if (v) { Ficha.verTicket(v.dataset.ver); return; }
     const b = ev.target.closest('[data-reimp]'); if (b) reimprimir(b.dataset.reimp);
   });
 
@@ -299,7 +315,8 @@
       laco();
     } catch (e) {
       m.fechar();
-      Ui.toast('Não consegui usar a câmera (' + (e.message || e.name) + '). Use o leitor ou digite o número.', 'erro', 6000);
+      Api.falha('Não consegui usar a câmera: ' + (e.message || e.name));
+      Ui.toast(Api.MSG_ERRO, 'erro');
     }
   }
 
@@ -325,6 +342,7 @@
           <div class="item-meta">${esc(R.localVeiculo(t, cfg))} · há <b data-desde="${t.entradaEm}" data-fmt="min">—</b></div>
         </div>
         <div class="item-acoes"><button type="button" class="btn btn-sm btn-contorno" data-ficha="${esc(t.id)}">✏️ Ficha</button>
+          <button type="button" class="btn btn-sm btn-contorno" data-ver="${esc(t.id)}">👁 Ver ticket</button>
           <button type="button" class="btn btn-sm btn-contorno" data-reimp="${esc(t.id)}">🖨️ Ticket</button></div>
       </div>`).join('') + (lista.length > 80 ? '<div class="vazio">Mostrando 80 de ' + lista.length + '. Refine a busca.</div>' : '')
       : '<div class="vazio">Nenhum veículo encontrado.</div>';
@@ -335,8 +353,42 @@
   $('#filtro-patio').addEventListener('click', ev => { const b = ev.target.closest('[data-fp]'); if (b) { est.filtroPatio = b.dataset.fp; renderPatio(); } });
   $('#busca-patio').addEventListener('input', () => renderPatio());
   $('#lista-patio').addEventListener('click', ev => {
+    const v = ev.target.closest('[data-ver]'); if (v) { Ficha.verTicket(v.dataset.ver); return; }
     const r = ev.target.closest('[data-reimp]'); if (r) { reimprimir(r.dataset.reimp); return; }
     const f = ev.target.closest('[data-ficha]'); if (f) Ficha.editar(f.dataset.ficha);
+  });
+
+  // ============================================================
+  //  FECHAMENTO (o que EU fiz hoje ou ontem — nunca o movimento dos colegas)
+  // ============================================================
+  const ROTULO_ACAO = { entrada: 'Entrada', busca: 'Busca', entrega: 'Entrega' };
+
+  function renderFechamento() {
+    const agora = Date.now();
+    $('#filtro-dia').innerHTML = ['hoje', 'ontem'].map(dia => {
+      const per = R.periodoFechamento(dia, agora);
+      return `<button type="button" class="chip ${est.diaFechamento === dia ? 'sel' : ''}" data-dia="${dia}">${dia === 'hoje' ? 'Hoje' : 'Ontem'} · ${Ui.data(per.ini).slice(0, 5)}</button>`;
+    }).join('');
+
+    const per = R.periodoFechamento(est.diaFechamento, agora);
+    const res = R.atendimentosManobrista(Dados.tickets, usuario.id, per.ini, per.fim);
+    const kpi = (rot, n) => `<div class="centro"><div class="negrito" style="font-size:1.6rem">${n}</div><div class="mudo pequeno">${rot}</div></div>`;
+    $('#resumo-fechamento').innerHTML = kpi('Entradas', res.entradas) + kpi('Buscas', res.buscas) + kpi('Entregas', res.entregas);
+
+    const cfg = Dados.config;
+    $('#lista-fechamento').innerHTML = res.itens.length ? res.itens.map(({ ticket: t, acoes }) => `
+      <div class="item ${t.status === 'ENTREGUE' ? 'verde' : t.status === 'CANCELADO' ? 'verm' : 'azul'}">
+        <div class="item-corpo">
+          <div><span class="item-ticket">#${esc(t.id)}</span> <span class="badge ${t.status === 'ENTREGUE' ? 'verde' : t.status === 'CANCELADO' ? 'verm' : 'azul'}">${esc(R.ROTULO_STATUS[t.status] || t.status)}</span></div>
+          <div class="item-placa">${esc(t.placa)}</div>
+          <div class="item-sub">${esc(R.descricaoVeiculo(t, cfg))}</div>
+          <div class="item-meta">${acoes.map(a => `${ROTULO_ACAO[a.tipo]} <b>${Ui.hora(a.em)}</b>`).join(' · ')}</div>
+        </div>
+      </div>`).join('') : `<div class="vazio">Nenhum veículo atendido por você ${est.diaFechamento === 'hoje' ? 'hoje' : 'ontem'}.</div>`;
+  }
+
+  $('#filtro-dia').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-dia]'); if (b) { est.diaFechamento = b.dataset.dia; renderFechamento(); }
   });
 
   // ============================================================
@@ -344,6 +396,7 @@
   // ============================================================
   function renderTudo() {
     renderCategorias(); renderPatios(); renderCores(); renderAvarias(); renderFila();
+    if (!$('#aba-fechamento').hidden) renderFechamento();
     if (!$('#aba-patio').hidden) renderPatio(); else {
       const mp = $('#marca-patio'), total = R.ativos(Dados.tickets).length; mp.textContent = total; mp.classList.toggle('zero', !total);
     }
@@ -360,5 +413,5 @@
   renderTudo();
   let abaInicial = 'entrada';
   try { abaInicial = sessionStorage.getItem('estacionamais.abaManobrista') || 'entrada'; } catch (e) { /* ok */ }
-  mostrarAba(['entrada', 'fila', 'patio'].includes(abaInicial) ? abaInicial : 'entrada');
+  mostrarAba(['entrada', 'fila', 'patio', 'fechamento'].includes(abaInicial) ? abaInicial : 'entrada');
 })();

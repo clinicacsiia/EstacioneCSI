@@ -324,6 +324,15 @@ teste('desempenho: restaurar 5.000 tickets e ler tudo cabe no limite de tempo da
   assert.ok(tRest < 30000 && tLer < 10000 && tGravar < 3000);
 });
 
+teste('falha inesperada do servidor: a tela recebe só "Ocorreu um erro." (sem detalhes técnicos)', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  // versão enorme: passa na conferência de "inteiro" mas estoura o bigint dentro do banco (erro que ninguém previu)
+  const r = await b.api('PUT', '/api/dados/tickets', t.man, { v: 1e30, delta: { t: 'm', up: [ticket(1001)], rm: [] } });
+  assert.equal(r.s, 500);
+  assert.deepEqual(r.c, { ok: false, erro: 'Ocorreu um erro.' });
+});
+
 // ------------------------------------------------------------ execução
 let falhas = 0;
 for (const { nome, fn } of testes) {
