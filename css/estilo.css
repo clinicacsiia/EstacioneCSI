@@ -250,6 +250,26 @@ details.card > summary .mudo { font-weight: 400; }
 .modal-rodape { display: flex; gap: 10px; padding: 12px 16px 16px; border-top: 1px solid var(--cinza-200); }
 .modal-rodape .btn { flex: 1; }
 
+/* ---------- Fotos de avarias / problemas ---------- */
+.fotos-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.foto-mini { position: relative; aspect-ratio: 1; border-radius: var(--raio-sm); overflow: hidden; background: var(--cinza-200); border: 1px solid var(--cinza-300); }
+.foto-mini .foto-ver { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.foto-mini img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.foto-mini .foto-hora { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 4px; background: rgba(0,0,0,.55); color: #fff; font-size: .68rem; text-align: center; }
+.foto-mini .foto-x {
+  position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; border: 0; border-radius: 50%;
+  background: rgba(17,24,39,.78); color: #fff; font-size: 1rem; line-height: 1; cursor: pointer;
+}
+.foto-mini.foto-carregando { display: flex; align-items: center; justify-content: center; font-size: 1.6rem; animation: pisca 1.1s ease-in-out infinite; }
+.fotos-botoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.fotos-botoes .btn { flex: 1 1 140px; }
+.foto-visor { display: flex; justify-content: center; background: #0f172a; border-radius: var(--raio-sm); min-height: 160px; }
+.foto-visor img { display: block; max-width: 100%; max-height: 62vh; max-height: 62dvh; object-fit: contain; }
+.foto-visor img.foto-borrada { filter: blur(6px); }
+/* setas do visor: só o símbolo, para os 3 botões do rodapé caberem no celular */
+.modal-rodape .btn.btn-seta { flex: 0 0 64px; padding-left: 0; padding-right: 0; font-size: 1.8rem; line-height: 1; }
+.foto-info { margin-top: 8px; text-align: center; color: var(--cinza-700); font-size: .9rem; }
+
 /* ---------- Toasts ---------- */
 #toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 84px; z-index: 200; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 460px); pointer-events: none; }
 .toast { padding: 13px 16px; border-radius: 10px; color: #fff; font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,.3); animation: entra .2s ease-out; }
@@ -371,5 +391,5 @@ body.painel { background: #0b1220; color: #fff; height: 100vh; overflow: hidden;
   .painel-cols { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .badge.pisca, .painel-col.destaque .painel-ticket, .toast { animation: none; }
+  .badge.pisca, .painel-col.destaque .painel-ticket, .toast, .foto-mini.foto-carregando { animation: none; }
 }

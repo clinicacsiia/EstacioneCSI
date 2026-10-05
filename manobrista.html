@@ -16,6 +16,7 @@
     <section id="aba-entrada" class="aba">
       <form id="form-entrada" class="col-centro" autocomplete="off" novalidate>
 
+        <div id="fotos-pendentes" hidden></div>
         <div id="ultimo-ticket" class="card ok" hidden></div>
 
         <div class="card">
@@ -60,6 +61,10 @@
           <textarea id="avarias-desc" maxlength="200" placeholder="Ex.: arranhão na porta direita, amassado no para-choque traseiro"></textarea>
           <div class="rotulo mt">Marque o que já existe</div>
           <div class="chips" id="grupo-avarias"></div>
+          <div id="bloco-fotos">
+            <div class="rotulo mt">Fotos <span class="mudo">(avarias ou qualquer problema)</span></div>
+            <div id="fotos-entrada"></div>
+          </div>
         </div>
 
         <div class="card">
@@ -139,6 +144,7 @@
   <script src="js/ui.js"></script>
   <script src="js/operacoes.js"></script>
   <script src="js/impressao.js"></script>
+  <script src="js/fotos.js"></script>
   <script src="js/ficha.js"></script>
   <script src="js/manobrista.js"></script>
 </body>

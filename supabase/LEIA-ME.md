@@ -92,6 +92,38 @@ Faça num momento tranquilo (fora do horário de movimento).
 
 ---
 
+## Fotos de avarias e problemas
+
+**Para ligar (uma vez):** depois de publicar esta versão no GitHub, rode o [`schema.sql`](schema.sql) **de novo** no SQL Editor (Parte 1, passo 5 — não apaga dados). Sem isso o sistema continua funcionando e o ticket sai normalmente, mas as fotos não sobem (a tela mostra *"Ocorreu um erro."* e o console do navegador diz *"rode o supabase/schema.sql de novo"*).
+
+**Como se usa**
+
+- **Entrada (manobrista):** em *Estado do veículo*, toque em **📷 Tirar foto** (abre a câmera) ou **🖼️ Galeria**. Dá para tirar várias; o **✕** remove antes de imprimir. Ao tocar em *IMPRIMIR TICKET* o ticket sai na hora e as fotos sobem logo em seguida. Se não houver sinal, aparece um aviso amarelo com **Tentar de novo** (as fotos ficam na memória do aparelho: não feche a página).
+- **Depois, a qualquer momento:** abra a **Ficha** do veículo (toque no carro na lista) → *Fotos de avarias ou problemas*. Na hora da **entrega**, o botão **📷 Fotos / problema** abre as fotos e permite tirar novas (útil quando o cliente aponta um problema ali).
+- **Quem vê:** manobrista, atendente e gerente veem o selo **📷 N** nas listas e as fotos na Ficha; o gerente também as vê no **Histórico** (com data, hora e quem tirou). O painel da TV nunca mostra fotos.
+- **Quem apaga:** só o **gerente** (no visor, *Excluir esta foto*), para ninguém remover prova de avaria. Fica na auditoria (*Foto adicionada* / *Foto excluída*).
+- **Permissão:** em *Administração → Permissões*, a linha *Anexar fotos de avarias / problemas* liga ou desliga para manobrista e atendente.
+
+**Como funciona por dentro:** cada foto é **reduzida no celular** antes de subir (JPEG de até 1024 px, ~60–100 KB, mais uma miniatura de ~10 KB) e guardada na tabela `estaciona.fotos`. O ticket guarda só os *ids* das fotos (campo `fotos`), por isso as listas continuam leves. Máximo de **10 fotos por veículo**.
+
+**Espaço (leia):** o plano gratuito do Supabase tem **500 MB para o banco inteiro**. Para as fotos não encherem o banco (o Supabase o deixa somente-leitura e as entradas parariam), o sistema reserva **250 MB** para elas (~2.500 fotos): quando acaba, recusa foto nova com o aviso *"O espaço reservado para fotos acabou. Avise o gerente."*. No SQL Editor:
+
+```sql
+-- quanto espaço as fotos usam
+select count(*) as fotos, pg_size_pretty(coalesce(sum(bytes), 0)::bigint) as espaco from estaciona.fotos;
+
+-- libera espaço: apaga fotos com mais de 90 dias de veículos que já saíram (quem está no pátio nunca perde foto)
+select estaciona.apagar_fotos_antigas(90);
+```
+
+Para mudar o limite, edite o número em `limite_fotos_bytes()` no `schema.sql` e rode de novo.
+
+**Backup:** o arquivo de backup guarda só a *lista* de fotos de cada ticket, **não as imagens** — elas existem apenas no banco do Supabase (e o plano gratuito não tem backup automático). *Restaurar* um backup **não apaga** fotos (os tickets do backup voltam a apontar para elas); *Apagar tudo e recomeçar* **apaga** as fotos também.
+
+**Privacidade:** as fotos podem mostrar pessoas, documentos ou objetos de valor no carro. Oriente a equipe a fotografar só a avaria/problema.
+
+---
+
 ## O que mudou para quem usa
 
 - **Mais rápido:** o esperado é cada gravação levar de 0,15 a 0,3 s (no Google eram ~2 s). Numa simulação com 150 ms por chamada, registrar uma entrada levou ~0,7 s (antes ~6 s). O tempo real depende da sua internet e da distância até o servidor do Supabase (o seu projeto está no Canadá). As telas atualizam sozinhas a cada ~3 s.
@@ -129,5 +161,5 @@ npm install
 npm test
 ```
 
-São 21 testes: segurança (a chave pública é barrada), login e sessões, permissões, versões e conflitos, usuários e senhas, auditoria, painel, nota fiscal, backup/restaurar/zerar e desempenho. O GitHub os roda sozinho quando o SQL muda (aba **Actions → Testes do banco**).
+São 26 testes: segurança (a chave pública é barrada), login e sessões, permissões, versões e conflitos, usuários e senhas, auditoria, painel, nota fiscal, backup/restaurar/zerar, fotos de avarias (formato, limites, permissões, limpeza) e desempenho. O GitHub os roda sozinho quando o SQL muda (aba **Actions → Testes do banco**).
 O que os testes **não** cobrem: a rede entre o seu navegador e o Supabase (CORS, pausa do projeto, limites do plano). Por isso, na Parte 3, faça o teste de um fluxo completo.

@@ -4,6 +4,7 @@ Sistema de estacionamento (entrada/saída, caixa, mensalistas, gerência, painel
 
 - **Telas:** publicadas de graça no **GitHub Pages** (HTTPS, funciona no celular e libera a impressora Bluetooth).
 - **Dados e login:** ficam no **Supabase** (banco Postgres). O login continua sendo do próprio sistema: o administrador cadastra as pessoas na tela de Administração.
+- **Fotos de avarias/problemas:** tiradas pelo celular na entrada, na ficha ou na entrega; ficam no Supabase (veja *Fotos* em [`supabase/LEIA-ME.md`](supabase/LEIA-ME.md)).
 - Nenhum computador do estacionamento precisa ficar ligado como servidor.
 
 Passo a passo completo (o que fazer no Supabase): [`supabase/LEIA-ME.md`](supabase/LEIA-ME.md).

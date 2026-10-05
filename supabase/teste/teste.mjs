@@ -41,7 +41,7 @@ teste('a chave pública (papel anon) NÃO lê nem grava nenhuma tabela, mas cham
   const t = await comUsuarios(b);
   await b.gravar(t.man, 'tickets', { t: 'm', up: [ticket(1001)], rm: [] });
   await b.db.exec('set role anon');
-  for (const tabela of ['registros', 'segredos', 'sessoes', 'objetos', 'controle', 'deltas', 'tentativas', 'notas', 'copias', 'propriedades']) {
+  for (const tabela of ['registros', 'segredos', 'sessoes', 'objetos', 'controle', 'deltas', 'tentativas', 'notas', 'copias', 'propriedades', 'fotos']) {
     await assert.rejects(b.db.query(`select * from estaciona.${tabela}`), /permission denied/i, tabela);
   }
   await assert.rejects(b.db.query("insert into estaciona.registros(col,id,doc) values ('tickets','x','{}')"), /permission denied/i);
@@ -322,6 +322,181 @@ teste('desempenho: restaurar 5.000 tickets e ler tudo cabe no limite de tempo da
   const tGravar = Date.now() - t0;
   console.log(`      (5.000 tickets: restaurar ${tRest} ms, ler tudo ${tLer} ms, gravar 1 ticket ${tGravar} ms; PGlite roda em WebAssembly: o Postgres do Supabase é bem mais rápido)`);
   assert.ok(tRest < 30000 && tLer < 10000 && tGravar < 3000);
+});
+
+// ------------------------------------------------------------ fotos de avarias / problemas
+// O servidor só confere o formato (começa com os bytes de um JPEG) e os limites; não precisa de uma foto de verdade.
+const jpg = (tam = 3000, marca = 1) => 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(tam, marca)]).toString('base64');
+const urlDe = (bytes) => 'data:image/jpeg;base64,' + Buffer.from(bytes).toString('base64');
+
+teste('fotos: guardar, listar miniaturas, abrir inteira, o ticket passa a listar o id e a auditoria registra', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.man, 'tickets', { t: 'm', up: [ticket(1001, { placa: 'ABC1D23' }), ticket(1002)], rm: [] });
+  const v0 = await b.versao(t.man, 'tickets');
+  const img1 = jpg(3000, 1), img2 = jpg(4000, 2);
+  const f1 = await b.api('POST', '/api/fotos', t.man, { ticket: '1001', imagem: img1, miniatura: jpg(500, 3) });
+  assert.equal(f1.s, 200, JSON.stringify(f1));
+  assert.match(f1.c.foto.id, /^f_[0-9a-f]{16}$/);
+  assert.equal(f1.c.foto.porNome, 'Pessoa man');
+  const f2 = await b.api('POST', '/api/fotos', t.cai, { ticket: '1001', imagem: img2, miniatura: jpg(600, 4) });
+  assert.equal(f2.s, 200);
+
+  const tk = (await b.api('GET', '/api/dados/tickets', t.cai)).c.dados;
+  assert.deepEqual(tk.find((x) => x.id === '1001').fotos, [f1.c.foto.id, f2.c.foto.id], 'o ticket lista os ids, na ordem');
+  assert.equal(tk.find((x) => x.id === '1001').placa, 'ABC1D23', 'o resto do ticket não muda');
+  assert.equal(tk.find((x) => x.id === '1002').fotos, undefined);
+  assert.equal(await b.versao(t.man, 'tickets'), v0 + 2, 'cada foto sobe a versão: as outras telas veem o 📷 sozinhas');
+
+  const lista = await b.api('GET', '/api/fotos?ticket=1001', t.ger);
+  assert.equal(lista.s, 200);
+  assert.deepEqual(lista.c.fotos.map((x) => x.id), [f1.c.foto.id, f2.c.foto.id]);
+  assert.ok(lista.c.fotos.every((x) => !('imagem' in x) && x.miniatura.startsWith('data:image/jpeg;base64,') && !x.miniatura.includes('\n')), 'a lista leva só miniaturas');
+  assert.equal(lista.c.fotos[0].miniatura, jpg(500, 3), 'volta byte a byte');
+  assert.deepEqual((await b.api('GET', '/api/fotos?ticket=1002', t.ger)).c.fotos, []);
+
+  const cheia = await b.api('GET', '/api/fotos?id=' + f2.c.foto.id, t.cai);
+  assert.equal(cheia.s, 200);
+  assert.equal(cheia.c.foto.imagem, img2, 'a foto inteira volta byte a byte');
+  assert.equal(cheia.c.foto.ticket, '1001');
+
+  const log = (await b.api('GET', '/api/dados/log', t.ger)).c.dados.filter((x) => x.acao === 'foto_adicionada');
+  assert.equal(log.length, 2);
+  assert.equal(log[0].ticket, '1001', 'aparece na linha do tempo do ticket');
+  assert.equal(log[0].usuario, 'Pessoa man');
+  assert.match(log[0].detalhe, /#1001 ABC1D23/);
+});
+
+teste('fotos: só logado e só perfis permitidos; o administrador ajusta quem pode; só o gerente apaga', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.man, 'tickets', { t: 'm', up: [ticket(1001)], rm: [] });
+  const foto = { ticket: '1001', imagem: jpg(), miniatura: jpg(300) };
+  assert.equal((await b.api('POST', '/api/fotos', '', foto)).s, 401);
+  assert.equal((await b.api('GET', '/api/fotos?ticket=1001', '')).s, 401);
+  assert.equal((await b.api('DELETE', '/api/fotos?id=f_x', '')).s, 401);
+  assert.equal((await b.api('POST', '/api/fotos', t.adm, foto)).s, 403, 'o perfil admin só cuida de usuários');
+  // o gerente tira a permissão do caixa (mesma regra de config.permissoes que js/auth.js usa)
+  await b.gravar(t.ger, 'config', { t: 't', dados: { permissoes: { 'foto.adicionar': ['manobrista'] } } });
+  assert.equal((await b.api('POST', '/api/fotos', t.cai, foto)).s, 403);
+  const ok = await b.api('POST', '/api/fotos', t.man, foto);
+  assert.equal(ok.s, 200);
+  assert.equal((await b.api('POST', '/api/fotos', t.ger, foto)).s, 200, 'o gerente sempre pode');
+  // apagar: só gerente
+  const id = ok.c.foto.id;
+  assert.equal((await b.api('DELETE', '/api/fotos?id=' + id, t.man)).s, 403);
+  assert.equal((await b.api('DELETE', '/api/fotos?id=' + id, t.cai)).s, 403);
+  assert.equal((await b.api('DELETE', '/api/fotos', t.ger)).s, 400);
+  assert.equal((await b.api('DELETE', '/api/fotos?id=' + id, t.ger)).s, 200);
+  assert.equal((await b.api('DELETE', '/api/fotos?id=' + id, t.ger)).s, 404, 'já apagada');
+  assert.equal((await b.api('GET', '/api/fotos?id=' + id, t.ger)).s, 404);
+  const tk = (await b.api('GET', '/api/dados/tickets', t.ger)).c.dados[0];
+  assert.equal(tk.fotos.length, 1, 'o id da foto apagada sai do ticket e a outra fica');
+  assert.ok(!tk.fotos.includes(id));
+  assert.equal(await b.n('select count(*)::int n from estaciona.fotos'), 1);
+  const apagou = (await b.api('GET', '/api/dados/log', t.ger)).c.dados.filter((x) => x.acao === 'foto_excluida');
+  assert.equal(apagou.length, 1);
+  assert.equal(apagou[0].ticket, '1001');
+  assert.equal((await b.api('GET', '/api/fotos', t.ger)).s, 400, 'sem ticket nem id');
+});
+
+teste('fotos: só JPEG de verdade, tamanho e quantidade limitados, ticket tem que existir, espaço total protegido', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.man, 'tickets', { t: 'm', up: [ticket(1001)], rm: [] });
+  const post = (extra) => b.api('POST', '/api/fotos', t.man, { ticket: '1001', imagem: jpg(), miniatura: jpg(300), ...extra });
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]).toString('base64');
+  const falsoJpeg = urlDe(Buffer.from('isto nao e uma imagem'));
+  for (const [nome, extra, esperado] of [
+    ['PNG', { imagem: png }, 400], ['sem o prefixo data:', { imagem: jpg().slice(23) }, 400], ['bytes que não são de JPEG', { imagem: falsoJpeg }, 400],
+    ['base64 quebrado', { imagem: 'data:image/jpeg;base64,/9j/!!!!' }, 400], ['sem imagem', { imagem: null }, 400], ['sem miniatura', { miniatura: undefined }, 400],
+    ['miniatura inválida', { miniatura: png }, 400], ['imagem enorme', { imagem: jpg(800000) }, 413], ['miniatura enorme', { miniatura: jpg(70000) }, 413],
+    ['ticket inexistente', { ticket: '9999' }, 404], ['sem ticket', { ticket: '' }, 404],
+  ]) {
+    const r = await post(extra);
+    assert.equal(r.s, esperado, nome + ' -> ' + JSON.stringify(r).slice(0, 200));
+  }
+  assert.equal(await b.n('select count(*)::int n from estaciona.fotos'), 0, 'nada foi gravado');
+  assert.deepEqual((await b.api('GET', '/api/dados/tickets', t.man)).c.dados[0].fotos, undefined);
+  assert.equal((await post({ imagem: jpg(200000) })).s, 200, 'uma foto grande, mas dentro do limite, passa');
+
+  // máximo por veículo
+  for (let i = 1; i < 10; i++) assert.equal((await post({})).s, 200);
+  const onze = await post({});
+  assert.equal(onze.s, 400);
+  assert.match(onze.c.erro, /10 fotos/);
+  assert.equal((await b.api('GET', '/api/dados/tickets', t.man)).c.dados[0].fotos.length, 10);
+
+  // espaço total: quando acaba, recusa com aviso claro (não deixa o banco do plano gratuito encher)
+  await b.gravar(t.man, 'tickets', { t: 'm', up: [ticket(1002)], rm: [] });
+  await b.db.exec('create or replace function estaciona.limite_fotos_bytes() returns bigint language sql immutable as $$ select 1000::bigint $$');
+  const cheio = await b.api('POST', '/api/fotos', t.man, { ticket: '1002', imagem: jpg(), miniatura: jpg(300) });
+  assert.equal(cheio.s, 413);
+  assert.match(cheio.c.erro, /espaço/);
+  assert.equal((await b.api('GET', '/api/dados/tickets', t.man)).c.dados.find((x) => x.id === '1002').fotos, undefined);
+});
+
+teste('fotos: id de ticket reaproveitado não mostra foto de outro carro; restaurar mantém; apagar tudo apaga', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.man, 'tickets', { t: 'm', up: [ticket(1001)], rm: [] });
+  const f = await b.api('POST', '/api/fotos', t.man, { ticket: '1001', imagem: jpg(), miniatura: jpg(300) });
+  assert.equal(f.s, 200);
+  const bk = (await b.api('GET', '/api/backup', t.ger)).c;
+  assert.deepEqual(bk.dados.tickets[0].fotos, [f.c.foto.id], 'o backup leva a lista de fotos do ticket (não as imagens)');
+
+  // restaurar um backup em que o ticket 1001 é OUTRO carro, sem fotos: a foto antiga não aparece nele
+  assert.equal((await b.api('POST', '/api/restaurar', t.ger, { dados: { ...bk.dados, tickets: [ticket(1001, { placa: 'XYZ9999' })] } })).s, 200);
+  assert.deepEqual((await b.api('GET', '/api/fotos?ticket=1001', t.ger)).c.fotos, []);
+  assert.equal(await b.n('select count(*)::int n from estaciona.fotos'), 1, 'restaurar não apaga fotos (podem pertencer a tickets de outro backup)');
+
+  // restaurar o backup original traz a foto de volta
+  assert.equal((await b.api('POST', '/api/restaurar', t.ger, { dados: bk.dados })).s, 200);
+  assert.equal((await b.api('GET', '/api/fotos?ticket=1001', t.ger)).c.fotos.length, 1);
+  assert.equal((await b.api('GET', '/api/fotos?id=' + f.c.foto.id, t.ger)).s, 200);
+
+  // rodar o schema.sql de novo não apaga fotos
+  await b.db.exec(SCHEMA);
+  assert.equal(await b.n('select count(*)::int n from estaciona.fotos'), 1);
+
+  assert.equal((await b.api('POST', '/api/zerar', t.ger, {})).s, 200);
+  assert.equal(await b.n('select count(*)::int n from estaciona.fotos'), 0, 'apagar tudo apaga as fotos também');
+});
+
+teste('fotos: apagar_fotos_antigas libera espaço só de veículos que já saíram e limpa os ids dos tickets', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.man, 'tickets', { t: 'm', up: [ticket(1, { status: 'ENTREGUE' }), ticket(2, { status: 'CANCELADO' }), ticket(3), ticket(4, { status: 'ENTREGUE' })], rm: [] });
+  const foto = async (ticketId, dias) => {
+    const r = await b.api('POST', '/api/fotos', t.man, { ticket: ticketId, imagem: jpg(), miniatura: jpg(300) });
+    assert.equal(r.s, 200);
+    await b.db.query('update estaciona.fotos set em = $1 where id = $2', [Date.now() - dias * 86400000, r.c.foto.id]);
+    return r.c.foto.id;
+  };
+  const velhaEntregue = await foto('1', 120), recenteEntregue = await foto('1', 10), velhaCancelada = await foto('2', 200);
+  const velhaNoPatio = await foto('3', 400), recente4 = await foto('4', 5);
+  // foto cujo ticket nem existe mais (ex.: depois de restaurar outro backup)
+  await b.db.query("insert into estaciona.fotos(id, ticket, em, por_nome, imagem, miniatura, bytes) values ('f_orfa', '999', $1, 'x', '\\xffd8ff'::bytea, '\\xffd8ff'::bytea, 6)", [Date.now() - 300 * 86400000]);
+  const v0 = await b.versao(t.man, 'tickets');
+
+  const q = async (dias) => (await b.db.query('select estaciona.apagar_fotos_antigas($1) as r', [dias])).rows[0].r;
+  assert.match(await q(3), /pelo menos 7/);
+  assert.equal(await b.n('select count(*)::int n from estaciona.fotos'), 6, 'nada foi apagado');
+  assert.equal(await q(90), '3 foto(s) apagada(s).');
+  const restam = (await b.db.query('select id from estaciona.fotos order by id')).rows.map((x) => x.id).sort();
+  assert.deepEqual(restam, [recente4, recenteEntregue, velhaNoPatio].sort(), 'ficam as recentes e a de veículo que ainda está no pátio');
+  const tk = Object.fromEntries((await b.api('GET', '/api/dados/tickets', t.man)).c.dados.map((x) => [x.id, x]));
+  assert.deepEqual(tk['1'].fotos, [recenteEntregue]);
+  assert.deepEqual(tk['2'].fotos, []);
+  assert.deepEqual(tk['3'].fotos, [velhaNoPatio]);
+  assert.equal(await b.versao(t.man, 'tickets'), v0 + 1, 'uma versão só, as telas se atualizam sozinhas');
+  assert.equal((await b.api('GET', '/api/fotos?id=' + velhaEntregue, t.ger)).s, 404);
+  assert.ok((await b.api('GET', '/api/dados/log', t.ger)).c.dados.some((x) => x.acao === 'fotos_apagadas' && /3 foto/.test(x.detalhe)));
+  assert.match(await q(90), /Nenhuma foto/);
+  assert.equal(await b.versao(t.man, 'tickets'), v0 + 1, 'sem nada para apagar, nada muda');
+  await b.db.exec('set role anon');
+  await assert.rejects(b.db.query('select estaciona.apagar_fotos_antigas(30)'), /permission denied/i, 'só quem tem acesso ao banco (SQL Editor) roda');
+  await b.db.exec('reset role');
 });
 
 teste('falha inesperada do servidor: a tela recebe só "Ocorreu um erro." (sem detalhes técnicos)', async () => {

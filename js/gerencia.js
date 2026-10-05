@@ -180,7 +180,7 @@
       const noite = agora - t.entradaEm > 24 * 3600000;
       return `<tr class="clicavel" data-h="${esc(t.id)}"><td class="negrito">#${esc(t.id)}</td><td class="mono negrito">${esc(t.placa)}</td><td>${esc(R.descricaoVeiculo(t, cfg))}</td>
         <td>${esc(R.localVeiculo(t, cfg))}</td><td class="nowrap">${Ui.dataHora(t.entradaEm)}</td>
-        <td class="nowrap ${noite ? 'verm negrito' : ''}">${R.duracao((agora - t.entradaEm) / 60000)}</td><td>${badgeStatus(t.status)}${t.ticketPerdido ? ' <span class="badge verm">perdido</span>' : ''}</td>
+        <td class="nowrap ${noite ? 'verm negrito' : ''}">${R.duracao((agora - t.entradaEm) / 60000)}</td><td>${badgeStatus(t.status)}${t.ticketPerdido ? ' <span class="badge verm">perdido</span>' : ''} ${Fotos.selo(t)}</td>
         <td class="num">${dev ? moeda(dev) : '—'}</td><td><button type="button" class="btn btn-sm btn-contorno" data-ficha="${esc(t.id)}">✏️</button></td></tr>`;
     }).join('');
     alvo.innerHTML = `<div class="mb"><b>${l.length}</b> veículo(s)${potencial ? ` · a receber se saíssem agora: <b>${moeda(potencial)}</b>` : ''}</div>` +
@@ -230,7 +230,7 @@
           return `<tr class="clicavel" data-h="${esc(t.id)}"><td class="negrito">#${esc(t.id)}</td><td class="mono negrito">${esc(t.placa)}</td><td>${esc(R.nomeCategoria(cfg, t.categoria))}</td>
             <td class="nowrap">${Ui.dataHora(t.entradaEm)}</td><td class="nowrap">${Ui.dataHora(t.entregueEm)}</td><td class="nowrap">${R.duracao((fim - t.entradaEm) / 60000)}</td>
             <td class="num">${moeda(R.totalRecebido(t))}</td><td>${esc(formas(t)) || '—'}</td>
-            <td>${badgeStatus(t.status)}${t.ticketPerdido ? ' <span class="badge verm">perdido</span>' : ''}${desc ? ' <span class="badge amar">desconto</span>' : ''}</td></tr>`;
+            <td>${badgeStatus(t.status)}${t.ticketPerdido ? ' <span class="badge verm">perdido</span>' : ''}${desc ? ' <span class="badge amar">desconto</span>' : ''} ${Fotos.selo(t)}</td></tr>`;
         }).join('') + '</tbody></table></div>' + (l.length > 200 ? `<div class="vazio">Mostrando 200 de ${l.length}. Use o CSV para ver tudo.</div>` : '')
         : '<div class="vazio">Nenhum ticket neste filtro.</div>');
   }
@@ -509,14 +509,14 @@
         <p>Último backup baixado: <b>${ub ? Ui.dataHora(ub) : 'nunca'}</b></p>
         <div class="gap"><button type="button" class="btn btn-primario btn-grande" id="b-exp">⬇ Baixar backup agora</button>
           <label class="btn btn-contorno btn-grande" style="cursor:pointer">⬆ Restaurar de um arquivo<input type="file" id="b-imp" accept=".json,application/json" hidden></label></div>
-        <p class="dica">O arquivo contém tickets, caixas e usuários (as senhas ficam guardadas só como hash). Guarde-o em local seguro.</p></div>
+        <p class="dica">O arquivo contém tickets, caixas e usuários (as senhas ficam guardadas só como hash). Guarde-o em local seguro. <b>As imagens das fotos de avarias não vão no arquivo</b> (só o registro de que existem): elas ficam apenas no banco.</p></div>
       ${legado ? `<div class="card alerta"><h3 class="mb">Dados antigos encontrados neste navegador</h3>
         <p style="margin-top:0">Este navegador ainda tem dados da versão antiga do sistema (quando tudo ficava no navegador): <b>${legado.dados.tickets.length}</b> ticket(s), <b>${legado.dados.usuarios.length}</b> usuário(s). Você pode enviá-los para o servidor. <b>Isso substitui os dados que já estão no servidor.</b></p>
         <button type="button" class="btn btn-contorno" id="b-legado">⬆ Enviar dados antigos para o servidor</button></div>` : ''}
       <div class="card"><h3 class="mb">Dados no servidor</h3>
         <p style="margin-top:0"><b>${Dados.tickets.length}</b> ticket(s), <b>${Dados.log.length}</b> registro(s) de auditoria, cerca de <b>${uso.bytes >= 1048576 ? (uso.bytes / 1048576).toFixed(1) + ' MB' : Math.round(uso.bytes / 1024) + ' KB'}</b>.</p></div>
       <div class="card perigo"><h3 class="mb">Zona de perigo</h3>
-        <p style="margin-top:0">Apaga <b>todos</b> os dados do servidor (tickets, caixas, usuários, configurações) para todos os aparelhos. O administrador volta ao usuário <b>admin</b> com a senha inicial (no Supabase: SQL Editor → <code>select estaciona.senha_admin_inicial();</code>) e os demais usuários precisam ser cadastrados de novo. Antes de apagar, o banco guarda uma cópia interna dos dados atuais (as 5 últimas, na tabela <code>estaciona.copias</code>), mas ela só se recupera pelo Supabase: baixe um backup antes. Útil para limpar dados de teste antes de começar a valer.</p>
+        <p style="margin-top:0">Apaga <b>todos</b> os dados do servidor (tickets, caixas, usuários, configurações e fotos) para todos os aparelhos. O administrador volta ao usuário <b>admin</b> com a senha inicial (no Supabase: SQL Editor → <code>select estaciona.senha_admin_inicial();</code>) e os demais usuários precisam ser cadastrados de novo. Antes de apagar, o banco guarda uma cópia interna dos dados atuais (as 5 últimas, na tabela <code>estaciona.copias</code>), mas ela só se recupera pelo Supabase: baixe um backup antes. Útil para limpar dados de teste antes de começar a valer.</p>
         <button type="button" class="btn btn-perigo" id="b-zerar">🗑️ Apagar tudo e recomeçar</button></div>`;
 
     const btLegado = $('#b-legado');
