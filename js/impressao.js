@@ -58,6 +58,18 @@
   function linhaTabela(t) {
     return ['Valor único: ' + R.moeda(Dados.config.valorFixo)];
   }
+  /**
+   * O que o manobrista anotou na entrada e deve sair no ticket (arranhão, amassado, objeto de valor no carro...):
+   * [[rótulo, texto], ...]. Lista vazia quando não há nada anotado (aí o ticket não ganha bloco nenhum).
+   */
+  function observacoes(t) {
+    var lista = [];
+    var avarias = [(t.avarias || []).join(', '), t.avariasDescricao || ''].filter(Boolean).join(' - ');
+    if (avarias) lista.push(['Avarias', avarias]);
+    if (t.objetosValor) lista.push(['Objetos de valor', t.objetosValor]);
+    if (t.obs) lista.push(['Obs', t.obs]);
+    return lista;
+  }
 
   // ---------- Impressão nativa ----------
   function areaImpressao() {
@@ -82,7 +94,7 @@
 
   function htmlTicket(t) {
     var cfg = Dados.config, esc = Ui.esc;
-    var veic = R.descricaoVeiculo(t, cfg);
+    var veic = R.descricaoVeiculo(t, cfg), obs = observacoes(t);
     var corpo =
       '<h1>' + esc(NOME_TICKET) + '</h1>' +
       '<div class="c">Comprovante de estacionamento</div><hr>' +
@@ -92,6 +104,8 @@
       '<div>' + esc(R.localVeiculo(t, cfg)) + '</div>' +
       '<div>Entrada: ' + dataHoraCurta(t.entradaEm) + '</div>' +
       '<div>Atendente: ' + esc(t.entradaPorNome || '') + '</div>' +
+      (obs.length ? '<hr><div class="negrito">OBSERVAÇÕES NA ENTRADA</div>' +
+        obs.map(function (o) { return '<div><b>' + esc(o[0]) + ':</b> ' + esc(o[1]) + '</div>'; }).join('') : '') +
       barcodeSVG(t.id, 46, 2) +
       '<div class="c">' + esc(t.id) + '</div><hr>' +
       linhaTabela(t).map(function (l) { return '<div>' + esc(l) + '</div>'; }).join('') +
@@ -174,6 +188,20 @@
     var esp = Math.max(1, this.cols - a.length - b.length);
     return this.ln(a + new Array(esp + 1).join(' ') + b);
   };
+  /** Texto corrido: quebra nas palavras para caber nas colunas do papel (não corta palavra ao meio, salvo as maiores que a linha). */
+  EscPos.prototype.paragrafo = function (s) {
+    var self = this, linha = '';
+    ascii(s).split(/\s+/).forEach(function (w) {
+      while (w.length > self.cols) {
+        if (linha) { self.ln(linha); linha = ''; }
+        self.ln(w.slice(0, self.cols)); w = w.slice(self.cols);
+      }
+      if (linha && (linha + ' ' + w).length > self.cols) { self.ln(linha); linha = w; }
+      else linha = linha ? linha + ' ' + w : w;
+    });
+    if (linha) self.ln(linha);
+    return this;
+  };
   EscPos.prototype.barras = function (codigo) {
     // GS h (altura) · GS w (largura) · GS H (texto abaixo: 0) · GS k 4 (Code 39, terminado em NUL)
     var c = ascii(String(codigo).toUpperCase()).replace(/[^0-9A-Z\-. ]/g, '');
@@ -186,14 +214,18 @@
   EscPos.prototype.bytes = function () { return new Uint8Array(this.b); };
 
   function escTicket(t) {
-    var cfg = Dados.config, e = new EscPos(), veic = R.descricaoVeiculo(t, cfg);
+    var cfg = Dados.config, e = new EscPos(), veic = R.descricaoVeiculo(t, cfg), obs = observacoes(t);
     e.titulo(NOME_TICKET)
       .ln('Comprovante de estacionamento').linha()
       .ln('TICKET').grande(true).negrito(true).ln('#' + t.id).ln(t.placa).grande(false).negrito(false).linha()
       .esquerda();
     if (veic) e.ln(veic);
-    e.ln(R.localVeiculo(t, cfg)).ln('Entrada: ' + dataHoraCurta(t.entradaEm)).ln('Atendente: ' + (t.entradaPorNome || ''))
-      .centro().ln('').barras(t.id).ln(t.id).esquerda().linha();
+    e.ln(R.localVeiculo(t, cfg)).ln('Entrada: ' + dataHoraCurta(t.entradaEm)).ln('Atendente: ' + (t.entradaPorNome || ''));
+    if (obs.length) {
+      e.linha().negrito(true).ln('OBSERVACOES NA ENTRADA').negrito(false);
+      obs.forEach(function (o) { e.paragrafo(o[0] + ': ' + o[1]); });
+    }
+    e.centro().ln('').barras(t.id).ln(t.id).esquerda().linha();
     linhaTabela(t).forEach(function (l) { e.ln(l); });
     e.linha().ln(cfg.rodapeTicket).linha()
       .centro().ln('--- VIA DA CHAVE ---').grande(true).negrito(true).ln('#' + t.id).ln(t.placa).grande(false).negrito(false);
