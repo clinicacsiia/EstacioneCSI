@@ -409,8 +409,11 @@ $$ delete from estaciona.sessoes where token = p_token $$;
 create or replace function estaciona.sessao_atualizar_senha(p_token text, p_hash text) returns void language sql as
 $$ update estaciona.sessoes set pwv = coalesce(p_hash, '') where token = p_token $$;
 
+-- (a versão antiga, de 3 parâmetros, sai: senão o Postgres veria duas funções iguais e recusaria as chamadas)
+drop function if exists estaciona.exigir(text, boolean, text[]);
 -- Confere a sessão e devolve o usuário (completo). p_perfis = quem pode (null = qualquer logado).
-create or replace function estaciona.exigir(p_token text, p_tocar boolean, p_perfis text[] default null) returns jsonb language plpgsql as $$
+-- Quem entrou com senha temporária (trocarSenha = true) só passa onde p_livre = true (carregar os dados da tela de troca e trocar a senha).
+create or replace function estaciona.exigir(p_token text, p_tocar boolean, p_perfis text[] default null, p_livre boolean default false) returns jsonb language plpgsql as $$
 declare s jsonb := estaciona.sessao_obter(p_token, p_tocar); u jsonb := null;
 begin
   if s is not null then
@@ -419,6 +422,9 @@ begin
   end if;
   if u is null then
     perform estaciona.falhar(401, 'Sessão expirada. Entre novamente.', jsonb_build_object('estabelecimento', estaciona.nome_estabelecimento()));
+  end if;
+  if not p_livre and coalesce((u ->> 'trocarSenha')::boolean, false) then
+    perform estaciona.falhar(403, 'Troque a senha temporária para continuar.', jsonb_build_object('trocarSenha', true));
   end if;
   if p_perfis is not null and not (u ->> 'perfil' = any (p_perfis)) then
     perform estaciona.falhar(403, 'Seu perfil não tem permissão para isso.');
@@ -785,6 +791,25 @@ begin
   return estaciona.ok(jsonb_build_object('ok', true));
 end $$;
 
+-- Troca da senha temporária: quem entrou com a senha definida pelo administrador escolhe a sua e a marca de "trocar" cai.
+-- As outras sessões da mesma pessoa são encerradas; a atual continua valendo com a senha nova.
+create or replace function estaciona.rota_trocar_senha(p_usuario jsonb, p_token text, d jsonb) returns jsonb language plpgsql as $$
+declare nova text := coalesce(d ->> 'nova', ''); salt text; novo_hash text;
+begin
+  if char_length(nova) < 6 or char_length(nova) > 40 then perform estaciona.falhar(400, 'A senha deve ter de 6 a 40 caracteres.'); end if;
+  if estaciona.hash_senha(nova, coalesce(p_usuario ->> 'salt', '-')) = coalesce(p_usuario ->> 'hash', '') then
+    perform estaciona.falhar(400, 'A nova senha deve ser diferente da senha temporária.');
+  end if;
+  salt := estaciona.novo_salt();
+  novo_hash := estaciona.hash_senha(nova, salt);
+  perform estaciona.confirmar('usuarios', jsonb_build_object('t', 'm', 'rm', '[]'::jsonb,
+    'up', jsonb_build_array(p_usuario || jsonb_build_object('salt', salt, 'hash', novo_hash, 'trocarSenha', false))));
+  perform estaciona.sessao_atualizar_senha(p_token, novo_hash);
+  delete from estaciona.sessoes where uid = p_usuario ->> 'id' and token <> p_token;
+  perform estaciona.registrar_log(p_usuario, 'senha_trocada', p_usuario ->> 'nome');
+  return estaciona.ok(jsonb_build_object('ok', true));
+end $$;
+
 create or replace function estaciona.rotear(p_metodo text, p_rota text, p_token text, p_corpo jsonb) returns jsonb language plpgsql as $$
 declare
   caminho text := split_part(p_rota, '?', 1);
@@ -798,12 +823,17 @@ begin
   if p_metodo = 'GET' then
     if caminho = '/api/painel' then return estaciona.ok(estaciona.painel()); end if;
     if caminho = '/api/versoes' then
-      perform estaciona.exigir(p_token, false);
+      perform estaciona.exigir(p_token, false, null, true);
       return estaciona.ok(jsonb_build_object('versoes', estaciona.versoes()));
     end if;
     if caminho = '/api/dados' then
-      u := estaciona.exigir(p_token, true);
-      return estaciona.ok(jsonb_build_object('sessao', jsonb_build_object('usuarioId', u -> 'id'), 'colecoes', estaciona.tudo()));
+      u := estaciona.exigir(p_token, true, null, true);
+      tudo := estaciona.tudo();
+      -- com senha temporária só vai o necessário para mostrar a tela de troca (nenhum ticket, caixa ou auditoria)
+      if coalesce((u ->> 'trocarSenha')::boolean, false) then
+        tudo := jsonb_build_object('usuarios', tudo -> 'usuarios', 'config', tudo -> 'config');
+      end if;
+      return estaciona.ok(jsonb_build_object('sessao', jsonb_build_object('usuarioId', u -> 'id'), 'colecoes', tudo));
     end if;
     if caminho like '/api/dados/%' then
       perform estaciona.exigir(p_token, true);
@@ -853,6 +883,10 @@ begin
   if p_metodo = 'POST' then
     if caminho = '/api/login' then return estaciona.rota_login(p_corpo); end if;
     if caminho = '/api/logout' then perform estaciona.sessao_encerrar(p_token); return estaciona.ok(jsonb_build_object('ok', true)); end if;
+    if caminho = '/api/senha/trocar' then
+      u := estaciona.exigir(p_token, true, null, true);
+      return estaciona.rota_trocar_senha(u, p_token, p_corpo);
+    end if;
     if caminho = '/api/senha/verificar' then
       perform estaciona.exigir(p_token, true);
       return estaciona.rota_verificar_senha(p_corpo);

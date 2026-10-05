@@ -21,11 +21,12 @@
   // ============================================================
   function renderUsuarios() {
     secao.innerHTML = `<div class="gap"><h2 class="titulo-pagina espaco">Usuários</h2><button type="button" class="btn btn-primario" id="u-novo">+ Novo usuário</button></div>
-      <div class="card"><p class="mudo" style="margin-top:0">Cadastre aqui quem vai usar o sistema, inclusive os <b>gerentes</b>. Cada pessoa entra com o <b>usuário</b> e a <b>senha</b> definidos aqui. Se alguém esquecer a senha, edite o usuário e informe uma nova.</p>
+      <div class="card"><p class="mudo" style="margin-top:0">Cadastre aqui quem vai usar o sistema, inclusive os <b>gerentes</b>. Cada pessoa entra com o <b>usuário</b> e a <b>senha temporária</b> definidos aqui e, no <b>primeiro acesso</b>, precisa escolher a própria senha. Se alguém esquecer a senha, use <b>🔑 Redefinir senha</b>: você informa uma nova senha temporária e a pessoa a troca ao entrar.</p>
         <div id="u-lista"></div></div>`;
     $('#u-novo').onclick = () => editarUsuario(null);
     $('#u-lista').onclick = ev => {
       const x = ev.target.closest('[data-excluir]'); if (x) { excluirUsuario(x.dataset.excluir); return; }
+      const rs = ev.target.closest('[data-reset]'); if (rs) { redefinirSenha(rs.dataset.reset); return; }
       const b = ev.target.closest('[data-u]'); if (b) editarUsuario(b.dataset.u);
     };
     atualizarUsuarios();
@@ -37,8 +38,8 @@
     alvo.innerHTML = `<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th>Último acesso</th><th></th></tr></thead><tbody>` +
       l.map(u => `<tr><td class="negrito">${esc(u.nome)}${u.id === usuario.id ? ' <span class="badge azul">você</span>' : ''}</td><td class="mono">${esc(u.login)}</td>
         <td>${Auth.PERFIS[u.perfil].emoji} ${esc(Auth.PERFIS[u.perfil].rotulo)}</td>
-        <td>${u.ativo ? '<span class="badge verde">Ativo</span>' : '<span class="badge">Inativo</span>'}</td><td>${u.ultimoLogin ? Ui.dataHora(u.ultimoLogin) : '—'}</td>
-        <td class="gap"><button type="button" class="btn btn-sm btn-contorno" data-u="${esc(u.id)}">Editar</button>${u.perfil === 'admin' || u.id === usuario.id ? '' : `<button type="button" class="btn btn-sm btn-contorno" data-excluir="${esc(u.id)}" aria-label="Excluir ${esc(u.nome)}">🗑 Excluir</button>`}</td></tr>`).join('') + '</tbody></table></div>';
+        <td>${u.ativo ? '<span class="badge verde">Ativo</span>' : '<span class="badge">Inativo</span>'}${u.trocarSenha ? ' <span class="badge amar" title="A pessoa ainda vai trocar a senha temporária no próximo acesso">Senha temporária</span>' : ''}</td><td>${u.ultimoLogin ? Ui.dataHora(u.ultimoLogin) : '—'}</td>
+        <td class="gap"><button type="button" class="btn btn-sm btn-contorno" data-u="${esc(u.id)}">Editar</button>${u.perfil === 'admin' ? '' : `<button type="button" class="btn btn-sm btn-contorno" data-reset="${esc(u.id)}" aria-label="Redefinir senha de ${esc(u.nome)}">🔑 Redefinir senha</button>`}${u.perfil === 'admin' || u.id === usuario.id ? '' : `<button type="button" class="btn btn-sm btn-contorno" data-excluir="${esc(u.id)}" aria-label="Excluir ${esc(u.nome)}">🗑 Excluir</button>`}</td></tr>`).join('') + '</tbody></table></div>';
   }
 
   async function excluirUsuario(id) {
@@ -49,6 +50,45 @@
     Ui.toast('Usuário excluído.'); atualizarUsuarios();
   }
 
+  /** Liga os botões 👁 (mostrar/ocultar) e Gerar (senha temporária aleatória) de um campo de senha dentro de um modal. */
+  function ligarCampoSenha(modal) {
+    modal.corpo.addEventListener('click', ev => {
+      const campo = ev.currentTarget.querySelector('#us-senha');
+      const ver = ev.target.closest('#us-ver'), gerar = ev.target.closest('#us-gerar');
+      if (gerar) { campo.value = Auth.gerarSenhaTemporaria(); campo.type = 'text'; $('#us-ver', ev.currentTarget).setAttribute('aria-pressed', 'true'); campo.focus(); }
+      if (!ver) return;
+      const mostrar = campo.type === 'password';
+      campo.type = mostrar ? 'text' : 'password';
+      ver.setAttribute('aria-pressed', mostrar ? 'true' : 'false');
+      ver.setAttribute('aria-label', mostrar ? 'Ocultar senha' : 'Mostrar senha');
+    });
+  }
+
+  function redefinirSenha(id) {
+    const u = Dados.usuarios.find(x => x.id === id); if (!u || u.perfil === 'admin') return;
+    const m = Ui.modal({
+      titulo: 'Redefinir senha', largura: 'sm',
+      html: `<p class="mudo" style="margin-top:0">Defina uma <b>senha temporária</b> para <b>${esc(u.nome)}</b> (${esc(u.login)}). Passe-a para a pessoa: ao entrar, ela será obrigada a escolher uma senha só dela. Quem estiver logado com a senha antiga é desconectado.</p>
+        <div class="campo mb"><label class="rotulo" for="us-senha">Senha temporária (6 a 40 caracteres)</label>
+          <div class="campo-senha"><input id="us-senha" type="text" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(Auth.gerarSenhaTemporaria())}" data-foco>
+          <button type="button" class="btn btn-contorno" id="us-ver" aria-label="Ocultar senha" aria-pressed="true">👁</button></div>
+          <button type="button" class="btn btn-sm btn-contorno mt" id="us-gerar">🎲 Gerar outra senha</button></div>
+        <div class="dica erro" id="us-erro" role="alert"></div>`,
+      botoes: [
+        { rotulo: 'Cancelar', classe: 'btn-contorno', aoClicar: m => m.fechar() },
+        {
+          rotulo: 'Redefinir senha', classe: 'btn-primario', padrao: true, aoClicar: m => {
+            const senha = $('#us-senha', m.corpo).value;
+            const r = Auth.atualizarUsuario(id, { senha });
+            if (!r.ok) { $('#us-erro', m.corpo).textContent = r.erro; return; }
+            m.fechar(); Ui.toast(`Senha temporária de ${u.nome} definida. Passe-a para a pessoa.`); atualizarUsuarios();
+          }
+        }
+      ]
+    });
+    ligarCampoSenha(m);
+  }
+
   function editarUsuario(id) {
     const u0 = id ? Dados.usuarios.find(x => x.id === id) : null;
     const ehAdmin = !!u0 && u0.perfil === 'admin';
@@ -57,12 +97,13 @@
       : `<div class="campo mb"><label class="rotulo" for="us-nome">Nome (aparece nas telas e na auditoria)</label><input id="us-nome" type="text" maxlength="30" value="${esc(u0 ? u0.nome : '')}" data-foco autocomplete="off"></div>
         <div class="campo mb"><label class="rotulo" for="us-login">Usuário (para entrar no sistema)</label><input id="us-login" type="text" maxlength="20" value="${esc(u0 ? u0.login : '')}" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
         <div class="campo mb"><label class="rotulo" for="us-perfil">Perfil</label><select id="us-perfil">${u0 ? '' : '<option value="">Escolha…</option>'}${Auth.PERFIS_OPERACIONAIS.map(p => `<option value="${p}" ${u0 && u0.perfil === p ? 'selected' : ''}>${esc(Auth.PERFIS[p].rotulo)}</option>`).join('')}</select></div>`;
-    Ui.modal({
+    const modal = Ui.modal({
       titulo: ehAdmin ? 'Senha do administrador' : (u0 ? 'Editar usuário' : 'Novo usuário'), largura: 'sm',
       html: dadosPessoa +
-        `<div class="campo mb"><label class="rotulo" for="us-senha">${u0 ? 'Nova senha (deixe vazio para manter)' : 'Senha (6 a 40 caracteres)'}</label>
+        `<div class="campo mb"><label class="rotulo" for="us-senha">${ehAdmin ? 'Nova senha (deixe vazio para manter)' : (u0 ? 'Nova senha temporária (deixe vazio para manter)' : 'Senha temporária (6 a 40 caracteres)')}</label>
           <div class="campo-senha"><input id="us-senha" type="password" maxlength="40" autocomplete="new-password" ${ehAdmin ? 'data-foco' : ''}>
-          <button type="button" class="btn btn-contorno" id="us-ver" aria-label="Mostrar senha" aria-pressed="false">👁</button></div></div>
+          <button type="button" class="btn btn-contorno" id="us-ver" aria-label="Mostrar senha" aria-pressed="false">👁</button></div>
+          ${ehAdmin ? '' : '<button type="button" class="btn btn-sm btn-contorno mt" id="us-gerar">🎲 Gerar senha</button><div class="dica">A pessoa troca esta senha no primeiro acesso.</div>'}</div>
         ${u0 && !ehAdmin ? `<label class="check"><input type="checkbox" id="us-ativo" ${u0.ativo ? 'checked' : ''}> Usuário ativo (desmarque para bloquear o acesso)</label>` : ''}
         <div class="dica erro" id="us-erro" role="alert"></div>`,
       botoes: [
@@ -85,14 +126,8 @@
           }
         }
       ]
-    }).corpo.addEventListener('click', ev => {
-      if (!ev.target.closest('#us-ver')) return;
-      const campo = ev.currentTarget.querySelector('#us-senha'), b = ev.target.closest('#us-ver');
-      const mostrar = campo.type === 'password';
-      campo.type = mostrar ? 'text' : 'password';
-      b.setAttribute('aria-pressed', mostrar ? 'true' : 'false');
-      b.setAttribute('aria-label', mostrar ? 'Ocultar senha' : 'Mostrar senha');
     });
+    ligarCampoSenha(modal);
   }
 
   // ============================================================

@@ -13,6 +13,7 @@ Os dados e o login agora ficam no **Supabase** (banco Postgres). O Google Planil
 - **GitHub** guarda o código e publica as telas (HTTPS, libera a impressora Bluetooth).
 - **Supabase** guarda tudo: usuários e senhas (só como hash), tickets, caixas, mensalistas, auditoria, configurações.
 - O **login continua sendo do sistema**: o administrador cadastra as pessoas na tela de Administração. As senhas são conferidas **dentro do banco**; o navegador nunca recebe hash de senha.
+- **Senha temporária:** a senha que o administrador define ao cadastrar alguém (ou em **🔑 Redefinir senha**) é temporária. No primeiro acesso a pessoa é obrigada a escolher a própria senha; até lá o banco recusa qualquer outra operação e não entrega tickets, caixas nem auditoria.
 
 ## Por que é seguro mesmo com a chave no site
 
@@ -144,7 +145,7 @@ Quando o sistema falha, a tela mostra só **"Ocorreu um erro."** (sem explicaç�
 | Sintoma | Causa provável |
 |---|---|
 | "Ocorreu um erro." ao abrir o sistema ou ao salvar | Sem internet; projeto pausado (Restore project); URL/chave erradas em `js/config.js` (ou chave revogada); o `schema.sql` ainda não foi executado; ou erro no servidor (veja o console do navegador e *Logs → Postgres Logs*). |
-| Volta ao login sozinho | Passou 12 h sem uso, senha trocada, usuário desativado, ou restauração/apagar tudo. |
+| Volta ao login sozinho | Passou 12 h sem uso, senha trocada ou redefinida pelo administrador, usuário desativado, ou restauração/apagar tudo. |
 | "Muitas tentativas. Aguarde…" | Bloqueio por senha errada (por conta). Aguarde. |
 | Restaurar backup grande dá erro de tempo | Rode `alter role anon set statement_timeout = '60s';` no SQL Editor (o `schema.sql` já faz isso, mas o Supabase pode ter restaurado o padrão de 3 s). |
 | Site do GitHub abre em branco / 404 | O fluxo da aba **Actions** ainda não terminou, ou *Settings → Pages → Source* não está em **GitHub Actions**. |
@@ -161,5 +162,5 @@ npm install
 npm test
 ```
 
-São 26 testes: segurança (a chave pública é barrada), login e sessões, permissões, versões e conflitos, usuários e senhas, auditoria, painel, nota fiscal, backup/restaurar/zerar, fotos de avarias (formato, limites, permissões, limpeza) e desempenho. O GitHub os roda sozinho quando o SQL muda (aba **Actions → Testes do banco**).
+São 31 testes: segurança (a chave pública é barrada), login e sessões, permissões, versões e conflitos, usuários e senhas (inclusive a troca da senha temporária), auditoria, painel, nota fiscal, backup/restaurar/zerar, fotos de avarias (formato, limites, permissões, limpeza) e desempenho. O GitHub os roda sozinho quando o SQL muda (aba **Actions → Testes do banco**).
 O que os testes **não** cobrem: a rede entre o seu navegador e o Supabase (CORS, pausa do projeto, limites do plano). Por isso, na Parte 3, faça o teste de um fluxo completo.

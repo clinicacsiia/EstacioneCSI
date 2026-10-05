@@ -151,6 +151,83 @@ teste('quem troca a PRÓPRIA senha continua logado', async () => {
   assert.equal((await b.api('POST', '/api/login', '', { login: 'admin', senha: 'nova-senha' })).s, 200);
 });
 
+// ------------------------------------------------------------ senha temporária (troca no primeiro acesso)
+teste('senha temporária: quem entra com ela só consegue trocar a senha (nada de tickets, caixas ou auditoria)', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.man, 'tickets', { t: 'm', up: [ticket(1001)], rm: [] });
+  await b.gravar(t.adm, 'usuarios', { t: 'm', up: [usuario('u_cai', 'cai', 'caixa', 'temp-123', { trocarSenha: true })], rm: [] });
+  const tmp = await b.entrar('cai', 'temp-123');
+  const d = await b.api('GET', '/api/dados', tmp);
+  assert.equal(d.s, 200);
+  assert.deepEqual(Object.keys(d.c.colecoes).sort(), ['config', 'usuarios'], 'só o necessário para a tela de troca');
+  assert.equal(d.c.colecoes.usuarios.dados.find((u) => u.id === 'u_cai').trocarSenha, true);
+  assert.equal((await b.api('GET', '/api/versoes', tmp)).s, 200);
+  for (const [m, r, corpo] of [['GET', '/api/dados/tickets'], ['GET', '/api/dados/caixas'], ['PUT', '/api/dados/tickets', { v: 0, delta: { t: 'm', up: [ticket(9)], rm: [] } }],
+    ['GET', '/api/fotos?ticket=1001'], ['POST', '/api/senha/verificar', { id: 'u_ger', senha: 'senha-ger' }], ['GET', '/api/nfse/status']]) {
+    const x = await b.api(m, r, tmp, corpo);
+    assert.equal(x.s, 403, m + ' ' + r);
+    assert.equal(x.c.trocarSenha, true, 'a tela sabe que precisa mandar para a troca');
+  }
+  assert.equal((await b.api('POST', '/api/logout', tmp, {})).s, 200, 'sair continua possível');
+});
+
+teste('senha temporária: trocar libera o acesso, derruba as outras sessões e só vale com senha nova e válida', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.adm, 'usuarios', { t: 'm', up: [usuario('u_cai', 'cai', 'caixa', 'temp-123', { trocarSenha: true })], rm: [] });
+  const tmp = await b.entrar('cai', 'temp-123');
+  const outra = await b.entrar('cai', 'temp-123');
+  assert.equal((await b.api('POST', '/api/senha/trocar', tmp, { nova: '123' })).s, 400, 'curta demais');
+  assert.equal((await b.api('POST', '/api/senha/trocar', tmp, { nova: 'x'.repeat(41) })).s, 400, 'longa demais');
+  const igual = await b.api('POST', '/api/senha/trocar', tmp, { nova: 'temp-123' });
+  assert.equal(igual.s, 400); assert.match(igual.c.erro, /diferente/);
+  assert.equal((await b.api('POST', '/api/senha/trocar', '', { nova: 'minha-senha' })).s, 401, 'sem sessão não troca');
+  assert.equal((await b.api('GET', '/api/dados/tickets', tmp)).s, 403, 'continua bloqueado enquanto não trocar');
+  assert.deepEqual((await b.api('POST', '/api/senha/trocar', tmp, { nova: 'minha-senha' })).c, { ok: true });
+  assert.equal((await b.api('GET', '/api/dados/tickets', tmp)).s, 200, 'a mesma sessão segue valendo, agora liberada');
+  assert.deepEqual(Object.keys((await b.api('GET', '/api/dados', tmp)).c.colecoes).length, 7);
+  assert.equal((await b.api('GET', '/api/versoes', outra)).s, 401, 'a outra sessão (com a senha temporária) caiu');
+  assert.equal((await b.api('POST', '/api/login', '', { login: 'cai', senha: 'temp-123' })).s, 401, 'a senha temporária deixou de valer');
+  const novo = await b.api('POST', '/api/login', '', { login: 'cai', senha: 'minha-senha' });
+  assert.equal(novo.s, 200);
+  assert.equal((await b.api('GET', '/api/dados/tickets', novo.c.token)).s, 200, 'próximo acesso: normal');
+  const cai = (await b.api('GET', '/api/dados/usuarios', t.adm)).c.dados.find((u) => u.id === 'u_cai');
+  assert.equal(cai.trocarSenha, false);
+  assert.ok(!/"hash"|"salt"/.test(JSON.stringify(cai)));
+  assert.ok((await b.api('GET', '/api/dados/log', t.ger)).c.dados.some((x) => x.acao === 'senha_trocada' && x.usuarioId === 'u_cai'), 'fica na auditoria');
+});
+
+teste('senha temporária: o administrador redefine a senha de quem já usa o sistema e a pessoa precisa trocar de novo', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.adm, 'usuarios', { t: 'm', up: [usuario('u_man', 'man', 'manobrista', 'temp-nova', { trocarSenha: true })], rm: [] });
+  assert.equal((await b.api('GET', '/api/versoes', t.man)).s, 401, 'a sessão aberta com a senha antiga cai');
+  assert.equal((await b.api('POST', '/api/login', '', { login: 'man', senha: 'senha-man' })).s, 401);
+  const tmp = await b.entrar('man', 'temp-nova');
+  assert.equal((await b.api('GET', '/api/dados/tickets', tmp)).s, 403);
+  assert.equal((await b.api('POST', '/api/senha/trocar', tmp, { nova: 'definitiva' })).s, 200);
+  assert.equal((await b.api('GET', '/api/dados/tickets', tmp)).s, 200);
+});
+
+teste('senha temporária: ninguém tira a própria marca de "trocar senha" por fora da rota de troca', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  await b.gravar(t.adm, 'usuarios', { t: 'm', up: [usuario('u_cai', 'cai', 'caixa', 'temp-123', { trocarSenha: true })], rm: [] });
+  const tmp = await b.entrar('cai', 'temp-123');
+  const r = await b.api('PUT', '/api/dados/usuarios', tmp, { v: await b.versao(tmp, 'usuarios'), delta: { t: 'm', up: [{ id: 'u_cai', nome: 'Pessoa cai', login: 'cai', perfil: 'caixa', ativo: true, trocarSenha: false }], rm: [] } });
+  assert.equal(r.s, 403);
+  assert.equal((await b.api('GET', '/api/dados/tickets', tmp)).s, 403);
+});
+
+teste('senha temporária: usuários sem a marca (administrador, backups antigos) continuam entrando direto', async () => {
+  const b = await novoBanco();
+  const t = await comUsuarios(b);
+  assert.equal((await b.api('GET', '/api/dados/tickets', t.adm)).s, 200);
+  assert.equal((await b.api('GET', '/api/dados/tickets', t.man)).s, 200);
+  assert.equal(Object.keys((await b.api('GET', '/api/dados', t.man)).c.colecoes).length, 7);
+});
+
 // ------------------------------------------------------------ dados
 teste('versões, deltas, "desde" e conflito de versão (409 já com o que mudou)', async () => {
   const b = await novoBanco();
