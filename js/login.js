@@ -25,14 +25,8 @@
   }
 
   if (Dados.semServidor) {
-    raiz.innerHTML = (Api.configurado
-      ? '<div class="card perigo"><b>Não foi possível falar com o servidor (Supabase).</b><br>' +
-        'Confira se você está com internet. Se o problema continuar, o administrador do sistema deve conferir o projeto no Supabase (se não está pausado, se o <code>schema.sql</code> foi executado) ' +
-        'e a URL/chave em <code>js/config.js</code>.<br><br>' +
-        '<button type="button" class="btn btn-primario" onclick="location.reload()">Tentar de novo</button></div>'
-      : '<div class="card perigo"><b>Servidor ainda não configurado.</b><br>' +
-        'Preencha a URL e a chave do Supabase em <code>js/config.js</code> e publique de novo ' +
-        '(passo a passo em <code>supabase/LEIA-ME.md</code>).</div>') + rodapeStatus();
+    raiz.innerHTML = '<div class="card perigo"><b>' + Api.MSG_ERRO + '</b><br><br>' +
+      '<button type="button" class="btn btn-primario" onclick="location.reload()">Tentar de novo</button></div>' + rodapeStatus();
     return;
   }
 

@@ -31,6 +31,23 @@
     Impressao.imprimirTicket(t);
   }
 
+  /**
+   * Mostra o ticket na tela (mesmo desenho do papel, com código de barras), sem depender de impressora
+   * nem da janela de impressão do navegador: funciona sempre, inclusive no celular.
+   */
+  function verTicket(id) {
+    var t = Op.achar(id);
+    if (!t) { Ui.toast('Ticket não encontrado.', 'erro'); return; }
+    Ui.modal({
+      titulo: 'Ticket · #' + t.id, largura: 'sm',
+      html: '<div class="ticket-tela"><div class="imp">' + Impressao.htmlTicket(t) + '</div></div>',
+      botoes: [
+        { rotulo: 'Fechar', classe: 'btn-contorno', aoClicar: function (mm) { mm.fechar(); } },
+        { rotulo: '🖨️ Imprimir', classe: 'btn-primario', padrao: true, aoClicar: function () { reimprimir(id); } }
+      ]
+    });
+  }
+
   /** Janela de edição/movimentação (só para veículos ainda no pátio). */
   function editar(id) {
     var t = Op.achar(id);
@@ -57,13 +74,17 @@
         '<div class="campo"><label class="rotulo" for="e-patio">Pátio</label><select id="e-patio">' +
         cfg.patios.filter(function (p) { return p.ativo !== false || p.id === t.patio; }).map(function (p) { return opt(p.id, p.nome, p.id === t.patio); }).join('') + '</select></div>' +
         '<div class="campo"><label class="rotulo" for="e-vaga">Vaga</label><input id="e-vaga" type="text" maxlength="10" value="' + esc(t.vaga) + '"></div>' +
-        '<div class="campo"><label class="rotulo" for="e-tel">Telefone</label><input id="e-tel" type="tel" maxlength="15" value="' + esc(t.telefone) + '"></div></div>' +
+        '<div class="campo"><label class="rotulo" for="e-tel">Telefone</label><input id="e-tel" type="tel" maxlength="15" value="' + esc(t.telefone) + '"></div>' +
+        '<div class="campo"><label class="rotulo" for="e-cpf">CPF</label><input id="e-cpf" type="text" inputmode="numeric" maxlength="14" autocomplete="off" value="' + esc(R.formatarCpf(t.cpf)) + '"></div></div>' +
         '<datalist id="ficha-modelos">' + MODELOS.map(function (x) { return '<option value="' + x + '">'; }).join('') + '</datalist>' +
         '<div class="rotulo mt">Avarias já existentes</div><div class="chips" id="e-avarias"></div>' +
+        '<label class="rotulo mt" for="e-avdesc">Arranhões, amassados e outras avarias</label><textarea id="e-avdesc" maxlength="200">' + esc(t.avariasDescricao) + '</textarea>' +
+        '<label class="rotulo mt" for="e-objvalor">Objetos de valor deixados no veículo</label><textarea id="e-objvalor" maxlength="200">' + esc(t.objetosValor) + '</textarea>' +
         '<label class="rotulo mt" for="e-obs">Observação</label><textarea id="e-obs" maxlength="200">' + esc(t.obs) + '</textarea>' +
         '<div class="dica erro" id="e-erro" role="alert"></div>',
       botoes: [
         { rotulo: 'Fechar', classe: 'btn-contorno', aoClicar: function (mm) { mm.fechar(); } },
+        { rotulo: '👁 Ver ticket', classe: 'btn-contorno', aoClicar: function () { verTicket(id); } },
         { rotulo: '🖨️ Ticket', classe: 'btn-contorno', aoClicar: function () { reimprimir(id); } },
         {
           rotulo: 'Salvar', classe: 'btn-primario', padrao: true, aoClicar: function (mm) {
@@ -71,7 +92,7 @@
             var r = Op.corrigirDados(id, {
               placa: $('#e-placa', c).value, placaLivre: livre, categoria: $('#e-cat', c).value, modelo: $('#e-modelo', c).value,
               cor: $('#e-cor', c).value, patio: $('#e-patio', c).value, vaga: $('#e-vaga', c).value, telefone: $('#e-tel', c).value,
-              avarias: avarias, obs: $('#e-obs', c).value
+              cpf: $('#e-cpf', c).value, avarias: avarias, avariasDescricao: $('#e-avdesc', c).value, objetosValor: $('#e-objvalor', c).value, obs: $('#e-obs', c).value
             });
             if (!r.ok) { $('#e-erro', c).textContent = r.erro; return; }
             mm.fechar();
@@ -94,6 +115,7 @@
       desenharAvarias();
     });
     $('#e-placa', m.corpo).addEventListener('input', function (e) { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); });
+    $('#e-cpf', m.corpo).addEventListener('input', function (e) { e.target.value = R.formatarCpf(e.target.value); });
   }
 
   /** Histórico completo (para o gerente resolver contestações). */
@@ -123,8 +145,11 @@
         l('Saída', t.entregueEm ? Ui.dataHora(t.entregueEm) + '<br><span class="mudo pequeno">por ' + esc(t.entreguePorNome || '—') + '</span>' : '') +
         l('Permanência', R.duracao((fim - t.entradaEm) / 60000)) +
         l('Buscado por', t.buscaPorNome ? esc(t.buscaPorNome) : '') +
-        l('Telefone', t.telefone ? esc(t.telefone) : '') + '</div>' +
-        ((t.avarias && t.avarias.length) || t.obs ? '<div class="card alerta mb pequeno"><b>Avarias/obs. na entrada:</b> ' + esc((t.avarias || []).join(', ')) + (t.obs ? ' — ' + esc(t.obs) : '') + '</div>' : '') +
+        l('Telefone', t.telefone ? esc(t.telefone) : '') +
+        l('CPF', t.cpf ? esc(R.formatarCpf(t.cpf)) : '') + '</div>' +
+        ((t.avarias && t.avarias.length) || t.avariasDescricao || t.obs ? '<div class="card alerta mb pequeno"><b>Avarias/obs. na entrada:</b> ' + esc((t.avarias || []).join(', ')) +
+          (t.avariasDescricao ? ((t.avarias || []).length ? ' — ' : '') + esc(t.avariasDescricao) : '') + (t.obs ? ' — ' + esc(t.obs) : '') + '</div>' : '') +
+        (t.objetosValor ? '<div class="card alerta mb pequeno"><b>Objetos de valor deixados no veículo:</b> ' + esc(t.objetosValor) + '</div>' : '') +
         (t.ticketPerdido ? '<div class="card perigo mb pequeno"><b>Ticket perdido:</b> retirado por ' + esc(t.ticketPerdido.nome) + ' · doc. ' + esc(t.ticketPerdido.documento) +
           (t.ticketPerdido.telefone ? ' · tel. ' + esc(t.ticketPerdido.telefone) : '') + ' · autorizado por ' + esc(t.ticketPerdido.autorizadoPor || '—') + '</div>' : '') +
         (t.cancelado ? '<div class="card perigo mb pequeno"><b>Cancelado</b> por ' + esc(t.cancelado.porNome) + ' em ' + Ui.dataHora(t.cancelado.em) + ' — ' + esc(t.cancelado.motivo) +
@@ -141,5 +166,5 @@
     });
   }
 
-  global.Ficha = { MODELOS: MODELOS, ROTULO_ACAO: ROTULO_ACAO, editar: editar, reimprimir: reimprimir, historico: historico };
+  global.Ficha = { MODELOS: MODELOS, ROTULO_ACAO: ROTULO_ACAO, editar: editar, reimprimir: reimprimir, verTicket: verTicket, historico: historico };
 })(window);

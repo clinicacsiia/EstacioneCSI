@@ -16,6 +16,10 @@
 
   var R = global.Regras;
 
+  // O nome que sai no topo do TICKET é este, sempre (não depende do nome do estabelecimento nas configurações).
+  var NOME_TICKET = 'Estacionamento JJ';
+  var TITULO_PAGINA = global.document.title; // o navegador usa o título da página como nome do trabalho de impressão
+
   // ---------- Code 39 ----------
   var C39 = {
     '0': 'nnnwwnwnn', '1': 'wnnwnnnnw', '2': 'nnwwnnnnw', '3': 'wnwwnnnnn', '4': 'nnnwwnnnw',
@@ -61,15 +65,16 @@
     if (!a) { a = document.createElement('div'); a.id = 'area-impressao'; document.body.appendChild(a); }
     return a;
   }
-  function imprimirHTML(html) {
+  function imprimirHTML(html, titulo) {
     var mm = Dados.config.larguraPapel === 48 ? 80 : 58;
     var st = document.getElementById('css-pagina');
     if (!st) { st = document.createElement('style'); st.id = 'css-pagina'; document.head.appendChild(st); }
     st.textContent = '@page{size:' + mm + 'mm auto;margin:2mm}';
     var a = areaImpressao();
     a.innerHTML = '<div class="imp" style="width:' + (mm - 6) + 'mm">' + html + '</div>';
+    global.document.title = titulo || TITULO_PAGINA;
     return new Promise(function (resolve) {
-      var fim = function () { global.removeEventListener('afterprint', fim); a.innerHTML = ''; resolve(); };
+      var fim = function () { global.removeEventListener('afterprint', fim); a.innerHTML = ''; global.document.title = TITULO_PAGINA; resolve(); };
       global.addEventListener('afterprint', fim);
       global.setTimeout(function () { global.print(); }, 60);
     });
@@ -79,7 +84,7 @@
     var cfg = Dados.config, esc = Ui.esc;
     var veic = R.descricaoVeiculo(t, cfg);
     var corpo =
-      '<h1>' + esc(cfg.estabelecimento.toUpperCase()) + '</h1>' +
+      '<h1>' + esc(NOME_TICKET) + '</h1>' +
       '<div class="c">Comprovante de estacionamento</div><hr>' +
       '<div class="c">TICKET</div><div class="c enorme">#' + esc(t.id) + '</div>' +
       '<div class="c grande">' + esc(t.placa) + '</div><hr>' +
@@ -157,6 +162,12 @@
   EscPos.prototype.esquerda = function () { return this.raw([ESC, 0x61, 0]); };
   EscPos.prototype.grande = function (on) { return this.raw([GS, 0x21, on ? 0x11 : 0x00]); };
   EscPos.prototype.negrito = function (on) { return this.raw([ESC, 0x45, on ? 1 : 0]); };
+  /** Título centralizado em destaque: dobra largura e altura se couber na linha, senão só a altura. */
+  EscPos.prototype.titulo = function (txt) {
+    var cabe = txt.length * 2 <= this.cols;
+    this.centro().raw([GS, 0x21, cabe ? 0x11 : 0x01]).negrito(true).ln(txt);
+    return this.raw([GS, 0x21, 0x00]).negrito(false);
+  };
   EscPos.prototype.linha = function (c) { return this.ln(new Array(this.cols + 1).join(c || '-')); };
   EscPos.prototype.par = function (a, b) {
     a = ascii(a); b = ascii(b);
@@ -176,7 +187,7 @@
 
   function escTicket(t) {
     var cfg = Dados.config, e = new EscPos(), veic = R.descricaoVeiculo(t, cfg);
-    e.centro().grande(true).negrito(true).ln(cfg.estabelecimento.toUpperCase()).grande(false).negrito(false)
+    e.titulo(NOME_TICKET)
       .ln('Comprovante de estacionamento').linha()
       .ln('TICKET').grande(true).negrito(true).ln('#' + t.id).ln(t.placa).grande(false).negrito(false).linha()
       .esquerda();
@@ -235,10 +246,12 @@
   function avisarStatus() { bt.ouvintes.forEach(function (fn) { try { fn(); } catch (e) { /* ok */ } }); }
   function pausa(ms) { return new Promise(function (r) { global.setTimeout(r, ms); }); }
 
+  // A impressora Bluetooth costuma "dormir" sozinha. Isso não é erro do sistema e não atrapalha o trabalho (na hora de
+  // imprimir, sem Bluetooth, o ticket sai pela impressão do navegador), então não há aviso na tela: o pontinho
+  // "Impressora" do topo apenas apaga.
   function aoDesconectar() {
     bt.carac = null;
     avisarStatus();
-    Ui.toast('Impressora Bluetooth desconectada.', 'aviso');
   }
 
   function escreverBT(bytes) {
@@ -255,6 +268,7 @@
 
   var Impressao = {
     barcodeSVG: barcodeSVG,
+    NOME_TICKET: NOME_TICKET,
 
     suportaBT: function () { return !!(global.navigator && global.navigator.bluetooth); },
     conectada: function () { return !!(bt.dispositivo && bt.dispositivo.gatt && bt.dispositivo.gatt.connected && bt.carac); },
@@ -335,7 +349,12 @@
         if (a === 'conectar') {
           b.disabled = true; b.textContent = 'Procurando...';
           Impressao.conectarBT().then(function () { Ui.toast('Impressora conectada!'); desenhar(); })
-            .catch(function (e) { if (e && e.name === 'NotFoundError') { desenhar(); return; } desenhar(); Ui.$('#imp-erro', corpo).textContent = e.message; });
+            .catch(function (e) {
+              desenhar();
+              if (e && e.name === 'NotFoundError') return; // o usuário só fechou a janela de escolha
+              Api.falha('Bluetooth: ' + ((e && e.message) || e));
+              Ui.$('#imp-erro', corpo).textContent = Api.MSG_ERRO;
+            });
         } else if (a === 'desc') { Impressao.desconectarBT(); desenhar(); }
         else if (a === 'teste') {
           Impressao.imprimirTicket({
@@ -349,14 +368,17 @@
     },
 
     /** Tenta Bluetooth; se não der, imprime pelo navegador. Devolve Promise<'bluetooth'|'sistema'>. */
-    _imprimir: function (bytes, html) {
+    _imprimir: function (bytes, html, titulo) {
       return escreverBT(bytes).then(function () { return 'bluetooth'; }).catch(function () {
-        return imprimirHTML(html).then(function () { return 'sistema'; });
+        return imprimirHTML(html, titulo).then(function () { return 'sistema'; });
       });
     },
 
+    /** O ticket (mesmo desenho do papel) como HTML, para mostrar na tela. */
+    htmlTicket: htmlTicket,
+
     imprimirTicket: function (t, teste) {
-      return Impressao._imprimir(escTicket(t), htmlTicket(t)).then(function (via) {
+      return Impressao._imprimir(escTicket(t), htmlTicket(t), NOME_TICKET).then(function (via) {
         if (via === 'bluetooth') Ui.toast('Ticket enviado para a impressora.', 'info');
         return via;
       });

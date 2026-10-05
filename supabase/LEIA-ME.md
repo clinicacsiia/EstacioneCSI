@@ -107,11 +107,11 @@ Faça num momento tranquilo (fora do horário de movimento).
 
 ## Problemas comuns
 
+Quando o sistema falha, a tela mostra só **"Ocorreu um erro."** (sem explicações para quem está trabalhando). O detalhe técnico fica no **console do navegador** (F12 → *Console*, linhas que começam com `[Estacionamento]`) e, no servidor, em *Logs → Postgres Logs* no Supabase.
+
 | Sintoma | Causa provável |
 |---|---|
-| "Não foi possível falar com o servidor (Supabase)" | Sem internet; projeto pausado (Restore project); URL/chave erradas em `js/config.js`; ou o `schema.sql` ainda não foi executado. |
-| "O servidor (Supabase) não respondeu como esperado" | Chave publishable errada/revogada, ou a função `estaciona_api` não existe: rode o `schema.sql`. |
-| "Erro inesperado no servidor" | Veja *Logs → Postgres Logs* no Supabase. |
+| "Ocorreu um erro." ao abrir o sistema ou ao salvar | Sem internet; projeto pausado (Restore project); URL/chave erradas em `js/config.js` (ou chave revogada); o `schema.sql` ainda não foi executado; ou erro no servidor (veja o console do navegador e *Logs → Postgres Logs*). |
 | Volta ao login sozinho | Passou 12 h sem uso, senha trocada, usuário desativado, ou restauração/apagar tudo. |
 | "Muitas tentativas. Aguarde…" | Bloqueio por senha errada (por conta). Aguarde. |
 | Restaurar backup grande dá erro de tempo | Rode `alter role anon set statement_timeout = '60s';` no SQL Editor (o `schema.sql` já faz isso, mas o Supabase pode ter restaurado o padrão de 3 s). |
@@ -129,5 +129,5 @@ npm install
 npm test
 ```
 
-São 20 testes: segurança (a chave pública é barrada), login e sessões, permissões, versões e conflitos, usuários e senhas, auditoria, painel, nota fiscal, backup/restaurar/zerar e desempenho. O GitHub os roda sozinho quando o SQL muda (aba **Actions → Testes do banco**).
+São 21 testes: segurança (a chave pública é barrada), login e sessões, permissões, versões e conflitos, usuários e senhas, auditoria, painel, nota fiscal, backup/restaurar/zerar e desempenho. O GitHub os roda sozinho quando o SQL muda (aba **Actions → Testes do banco**).
 O que os testes **não** cobrem: a rede entre o seu navegador e o Supabase (CORS, pausa do projeto, limites do plano). Por isso, na Parte 3, faça o teste de um fluxo completo.

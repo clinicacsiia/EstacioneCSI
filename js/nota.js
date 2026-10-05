@@ -15,16 +15,7 @@
   // ---------- Documentos ----------
   function digitos(v) { return String(v == null ? '' : v).replace(/\D/g, ''); }
 
-  function cpfValido(c) {
-    c = digitos(c);
-    if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
-    for (var t = 9; t < 11; t++) {
-      var soma = 0;
-      for (var i = 0; i < t; i++) soma += Number(c.charAt(i)) * (t + 1 - i);
-      if ((soma * 10) % 11 % 10 !== Number(c.charAt(t))) return false;
-    }
-    return true;
-  }
+  function cpfValido(c) { return R.cpfValido(c); }
 
   function cnpjValido(c) {
     c = digitos(c);
@@ -54,19 +45,15 @@
   }
 
   // ---------- Servidor de notas ----------
-  var SEM_SERVIDOR = 'Não foi possível falar com o servidor de notas. Confira a conexão com a internet e tente de novo.';
+  var SEM_SERVIDOR = global.Api.MSG_ERRO;
 
   function chamar(caminho, corpo) {
     var ctl = new AbortController(), timer = global.setTimeout(function () { ctl.abort(); }, 45000);
     return global.Api.buscar(caminho, { metodo: corpo ? 'POST' : 'GET', corpo: corpo || undefined, signal: ctl.signal }).then(function (r) {
-      return r.json().catch(function () { return { ok: false, erro: 'Resposta inválida do servidor de notas.' }; });
+      return r.json().catch(function () { return { ok: false, erro: SEM_SERVIDOR }; });
     }).catch(function (e) {
-      return {
-        ok: false, semServidor: true,
-        erro: e && e.name === 'AbortError'
-          ? 'O servidor de notas demorou demais. Tente de novo: o sistema não emite duas notas para o mesmo pagamento.'
-          : SEM_SERVIDOR
-      };
+      global.Api.falha('Falha ao falar com o servidor de notas (' + caminho + '): ' + ((e && e.name) || e));
+      return { ok: false, semServidor: true, erro: SEM_SERVIDOR };
     }).then(function (r) { global.clearTimeout(timer); return r; });
   }
 
@@ -163,7 +150,7 @@
       }).then(function (r) {
         if (!r.ok) {
           ocupado = false; btn.disabled = false; btn.textContent = '📄 Emitir nota';
-          er.textContent = r.erro || 'Não foi possível emitir a nota.';
+          er.textContent = r.erro || SEM_SERVIDOR;
           return;
         }
         var reg = Op.registrarNota(t.id, p.id, {

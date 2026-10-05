@@ -178,9 +178,11 @@
     global.location.replace('index.html?inativo=1');
   }
 
-  function erroDe(r, padrao_) {
-    if (r.status === 0) return 'Sem conexão com o servidor. Confira a internet/Wi-Fi e tente de novo.';
-    return (r.corpo && r.corpo.erro) || padrao_;
+  /** Texto de erro para a tela: a regra do servidor (ex.: "Seu perfil não pode alterar isso.") ou, se o sistema falhou, só "Ocorreu um erro.". */
+  function erroDe(r) {
+    if (r.status === 0) global.Api.falha('Sem conexão com o servidor.');
+    if (r.status === 0 || r.status >= 500) return global.Api.MSG_ERRO;
+    return (r.corpo && r.corpo.erro) || global.Api.MSG_ERRO;
   }
 
   /** Atualiza o cache com uma resposta do servidor (deltas ou coleção inteira). true = mudou. */
@@ -257,10 +259,14 @@
     deslogado: false,     // servidor respondeu "faça login"
     sessao: null,         // { usuarioId } do usuário logado
     requisitar: requisitar,
+    erroDe: erroDe,
 
     /** Carrega tudo do servidor. Chame uma vez no início de cada página. */
     iniciar: function () {
       var r = requisitar('GET', '/api/dados');
+      // Uma falha passageira (sinal que oscilou, servidor ocupado) não pode virar "sem conexão" nem derrubar quem já está
+      // trabalhando: ler é seguro de repetir, então tenta mais duas vezes antes de desistir.
+      for (var nova = 0; nova < 2 && (r.status === 0 || r.status >= 500); nova++) r = requisitar('GET', '/api/dados');
       Dados.semServidor = Dados.semArmazenamento = false;
       Dados.deslogado = false;
       Dados.sessao = null;
@@ -320,10 +326,11 @@
         }
         Dados[nome] = trabalho(nome, cache[nome].dados);
         if (resp.status === 401) { sessaoExpirada(); throw new Error('Sessão expirada. Entre novamente.'); }
-        throw new Error(erroDe(resp, 'Não foi possível salvar (erro ' + resp.status + ').'));
+        throw new Error(erroDe(resp));
       }
       Dados[nome] = trabalho(nome, cache[nome].dados);
-      throw new Error('Muita gente alterando ao mesmo tempo. Tente de novo.');
+      global.Api.falha('Muitas alterações ao mesmo tempo em "' + nome + '": desisti depois de ' + TENTATIVAS + ' tentativas.');
+      throw new Error(global.Api.MSG_ERRO);
     },
 
     /** Registra uma função chamada quando qualquer coleção muda (nesta aba ou em outro aparelho). */
@@ -356,7 +363,7 @@
       Dados.mudar('meta', function (m) { m.ultimoBackup = Date.now(); });
       var r = requisitar('GET', '/api/backup');
       if (r.status === 401) sessaoExpirada();
-      if (r.status !== 200 || !r.corpo) throw new Error(erroDe(r, 'Não foi possível gerar o backup.'));
+      if (r.status !== 200 || !r.corpo) throw new Error(erroDe(r));
       return r.corpo;
     },
 
@@ -370,7 +377,7 @@
       });
       if (!ehObjeto(d.config) || !ehObjeto(d.meta)) throw new Error('Backup incompleto (config/meta).');
       var r = requisitar('POST', '/api/restaurar', { dados: d });
-      if (!r.corpo || !r.corpo.ok) throw new Error(erroDe(r, 'O servidor recusou o backup.'));
+      if (!r.corpo || !r.corpo.ok) throw new Error(erroDe(r));
       Dados.iniciar();
       notificar('*', false);
     },
@@ -378,7 +385,7 @@
     /** Apaga TUDO no servidor (usado para limpar dados de teste). O administrador volta à senha inicial. */
     zerar: function () {
       var r = requisitar('POST', '/api/zerar', {});
-      if (!r.corpo || !r.corpo.ok) throw new Error(erroDe(r, 'Não foi possível apagar os dados.'));
+      if (!r.corpo || !r.corpo.ok) throw new Error(erroDe(r));
       Dados.parar();
       Dados.iniciar();
       notificar('*', false);

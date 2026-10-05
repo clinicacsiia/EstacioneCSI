@@ -54,6 +54,8 @@
       if (dentro) return erro('Este veículo já está no pátio (ticket #' + dentro.id + ').', { ticketExistente: dentro.id });
       var patio = Dados.patio(d.patio);
       if (!patio || patio.ativo === false) return erro('Escolha o pátio onde o veículo vai ficar.');
+      var cpf = digitos(d.cpf);
+      if (cpf && !R.cpfValido(cpf)) return erro('CPF inválido.', { campo: 'cpf' });
       var cat = Dados.config.tabela[d.categoria] ? d.categoria : 'carro';
       var u = Auth.atual(), agora = Date.now();
       var mens = R.mensalistaVigente(chave, Dados.mensalistas, agora);
@@ -62,8 +64,9 @@
 
       var t = {
         id: id, placa: v.placa, categoria: cat, modelo: texto(d.modelo), cor: texto(d.cor),
-        patio: patio.id, vaga: texto(d.vaga).toUpperCase(), telefone: digitos(d.telefone),
-        avarias: Array.isArray(d.avarias) ? d.avarias.slice() : [], obs: texto(d.obs),
+        patio: patio.id, vaga: texto(d.vaga).toUpperCase(), telefone: digitos(d.telefone), cpf: cpf,
+        avarias: Array.isArray(d.avarias) ? d.avarias.slice() : [], avariasDescricao: texto(d.avariasDescricao),
+        objetosValor: texto(d.objetosValor), obs: texto(d.obs),
         entradaEm: agora, entradaPor: u.id, entradaPorNome: u.nome,
         status: 'ESTACIONADO', mensalistaId: mens ? mens.id : null,
         pagamentos: [], pagoEm: null, ticketPerdido: null,
@@ -111,8 +114,15 @@
       ['modelo', 'cor', 'obs'].forEach(function (k) {
         if (c[k] !== undefined && texto(c[k]) !== t[k]) { mud.push(k + ' alterado'); novo[k] = texto(c[k]); }
       });
+      [['avariasDescricao', 'descrição das avarias'], ['objetosValor', 'objetos de valor']].forEach(function (par) {
+        if (c[par[0]] !== undefined && texto(c[par[0]]) !== (t[par[0]] || '')) { mud.push(par[1] + ' alterado(s)'); novo[par[0]] = texto(c[par[0]]); }
+      });
       if (c.vaga !== undefined && texto(c.vaga).toUpperCase() !== t.vaga) { mud.push('vaga ' + (t.vaga || '—') + ' → ' + (texto(c.vaga).toUpperCase() || '—')); novo.vaga = texto(c.vaga).toUpperCase(); }
       if (c.telefone !== undefined && digitos(c.telefone) !== t.telefone) { mud.push('telefone alterado'); novo.telefone = digitos(c.telefone); }
+      if (c.cpf !== undefined && digitos(c.cpf) !== (t.cpf || '')) {
+        if (digitos(c.cpf) && !R.cpfValido(c.cpf)) return erro('CPF inválido.');
+        mud.push('CPF alterado'); novo.cpf = digitos(c.cpf);
+      }
       if (Array.isArray(c.avarias) && c.avarias.join('|') !== (t.avarias || []).join('|')) { mud.push('avarias alteradas'); novo.avarias = c.avarias.slice(); }
       if (!mud.length) return { ok: true, ticket: t, semMudanca: true };
 
