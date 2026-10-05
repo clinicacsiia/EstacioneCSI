@@ -358,7 +358,7 @@ body.painel { background: #0b1220; color: #fff; height: 100vh; overflow: hidden;
   #area-impressao { display: block !important; }
   html, body { height: auto !important; background: #fff !important; overflow: visible !important; }
 }
-.imp { font-family: "Courier New", monospace; color: #000; width: 100%; font-size: 12px; line-height: 1.25; }
+.imp { font-family: "Courier New", monospace; color: #000; width: 100%; font-size: 12px; line-height: 1.25; overflow-wrap: anywhere; }
 .imp h1 { font-size: 16px; text-align: center; margin: 0; }
 .imp .c { text-align: center; }
 .imp .grande { font-size: 24px; font-weight: 700; letter-spacing: 2px; }
