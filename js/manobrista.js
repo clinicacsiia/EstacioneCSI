@@ -18,6 +18,9 @@
 
   const est = { categoria: 'carro', cor: '', patio: null, avarias: [], filtroPatio: 'todos', diaFechamento: 'hoje' };
   let vistos = null; // tickets pagos já conhecidos (para avisar quando entra um novo)
+  const fotosEntrada = Auth.pode('foto.adicionar') ? Fotos.seletor($('#fotos-entrada')) : null;
+  if (!fotosEntrada) $('#bloco-fotos').hidden = true;
+  const fotosPendentes = []; // fotos que não subiram (sem sinal...): ficam aqui até dar certo ou serem descartadas { id, placa, itens, erro }
 
   // ============================================================
   //  ABAS
@@ -127,6 +130,8 @@
   form.addEventListener('submit', ev => { ev.preventDefault(); enviarEntrada(); });
 
   function enviarEntrada() {
+    if (fotosEntrada && fotosEntrada.ocupado()) { Ui.toast('Aguarde a foto terminar de carregar.', 'aviso'); return; }
+    const fotos = fotosEntrada ? fotosEntrada.itens() : [];
     const r = Op.registrarEntrada({
       placa: inPlaca.value, placaLivre: chkLivre.checked, categoria: est.categoria,
       modelo: $('#modelo').value, cor: est.cor, patio: est.patio, vaga: $('#vaga').value,
@@ -142,13 +147,56 @@
     mostrarUltimo(r.ticket, r.mensalista);
     limparFormulario();
     Impressao.imprimirTicket(r.ticket);
+    if (fotos.length) enviarFotos(r.ticket, fotos);
   }
+
+  // ----- fotos da entrada: sobem depois que o ticket existe (a impressão não espera) -----
+  async function enviarFotos(ticket, itens) {
+    const r = await Fotos.enviar(ticket.id, itens);
+    if (!r.falhas.length) { Ui.toast(`📷 ${r.enviadas === 1 ? 'Foto enviada' : r.enviadas + ' fotos enviadas'} (ticket #${ticket.id}).`, 'sucesso'); return; }
+    fotosPendentes.push({ id: ticket.id, placa: ticket.placa, itens: r.falhas, erro: r.erro });
+    renderPendentes();
+    Ui.toast(`⚠ Ticket #${ticket.id}: ${r.falhas.length === 1 ? 'a foto NÃO foi enviada' : r.falhas.length + ' fotos NÃO foram enviadas'}. ${r.erro}`, 'aviso', 9000);
+  }
+
+  function renderPendentes() {
+    const box = $('#fotos-pendentes');
+    box.hidden = !fotosPendentes.length;
+    box.innerHTML = fotosPendentes.map((p, i) => `<div class="card alerta mb">
+      <b>⚠ Ticket #${esc(p.id)} · ${esc(p.placa)}:</b> ${p.itens.length === 1 ? '1 foto não foi enviada' : p.itens.length + ' fotos não foram enviadas'}. ${esc(p.erro)}
+      <div class="gap mt"><button type="button" class="btn btn-sm btn-primario" data-reenviar="${i}" ${p.enviando ? 'disabled' : ''}>${p.enviando ? '⏳ Enviando...' : '📷 Tentar de novo'}</button>
+        <button type="button" class="btn btn-sm btn-contorno" data-descartar="${i}">Descartar</button></div></div>`).join('');
+  }
+
+  $('#fotos-pendentes').addEventListener('click', async ev => {
+    const re = ev.target.closest('[data-reenviar]'), de = ev.target.closest('[data-descartar]');
+    if (de) {
+      const p = fotosPendentes[Number(de.dataset.descartar)];
+      if (p && await Ui.confirmar({ titulo: 'Descartar fotos?', mensagem: `As fotos do ticket #${p.id} que não subiram serão perdidas. Para tirá-las de novo, use a ficha do veículo.`, ok: 'Descartar', perigo: true })) {
+        fotosPendentes.splice(fotosPendentes.indexOf(p), 1); renderPendentes();
+      }
+      return;
+    }
+    if (!re) return;
+    const p = fotosPendentes[Number(re.dataset.reenviar)];
+    if (!p || p.enviando) return; // o item guarda o "enviando": a lista é redesenhada quando outro termina e o botão não pode voltar a valer
+    p.enviando = true; renderPendentes();
+    const r = await Fotos.enviar(p.id, p.itens);
+    p.enviando = false;
+    if (r.falhas.length) { p.itens = r.falhas; p.erro = r.erro; Ui.toast(r.erro, 'erro'); }
+    else { fotosPendentes.splice(fotosPendentes.indexOf(p), 1); Ui.toast('📷 Fotos enviadas.', 'sucesso'); }
+    renderPendentes();
+  });
+
+  // não deixa fechar a página com foto que ainda não subiu
+  window.addEventListener('beforeunload', ev => { if (fotosPendentes.length) { ev.preventDefault(); ev.returnValue = ''; } });
 
   function limparFormulario() {
     inPlaca.value = ''; chkLivre.checked = false;
     $('#modelo').value = ''; $('#vaga').value = ''; $('#telefone').value = ''; $('#obs').value = '';
     inCpf.value = ''; $('#avarias-desc').value = ''; $('#objetos-valor').value = '';
     est.cor = ''; est.avarias = []; est.categoria = 'carro';
+    if (fotosEntrada) fotosEntrada.limpar();
     $('#det-extras').open = false;
     renderCategorias(); renderCores(); renderAvarias(); renderPatios(); atualizarInfoPlaca(); atualizarInfoCpf();
     inPlaca.focus();
@@ -176,7 +224,7 @@
     const cfg = Dados.config, perdido = t.ticketPerdido;
     return `<div class="item ${perdido ? 'verm' : 'azul'}">
       <div class="item-corpo" data-ficha="${esc(t.id)}" style="cursor:pointer">
-        <div><span class="item-ticket">#${esc(t.id)}</span> ${perdido ? '<span class="badge verm pisca">TICKET PERDIDO</span>' : ''}</div>
+        <div><span class="item-ticket">#${esc(t.id)}</span> ${perdido ? '<span class="badge verm pisca">TICKET PERDIDO</span>' : ''} ${Fotos.selo(t)}</div>
         <div class="item-placa">${esc(t.placa)}</div>
         <div class="item-sub">${esc(R.descricaoVeiculo(t, cfg))}</div>
         <div class="item-meta">${esc(R.localVeiculo(t, cfg))} · esperando <b data-desde="${t.pagoEm}" data-fmt="cron" data-alerta="3,6">00:00</b></div>
@@ -191,7 +239,7 @@
       ? `<a class="btn btn-sm btn-contorno" target="_blank" rel="noopener" href="https://wa.me/${t.telefone.length <= 11 ? '55' : ''}${t.telefone}?text=${encodeURIComponent('Olá! Seu veículo ' + t.placa + ' está a caminho da retirada.')}">📱 Avisar</a>` : '';
     return `<div class="item ${perdido ? 'verm' : 'verde'}">
       <div class="item-corpo" data-ficha="${esc(t.id)}" style="cursor:pointer">
-        <div><span class="item-ticket">#${esc(t.id)}</span> ${perdido ? '<span class="badge verm pisca">SEM TICKET · CONFERIR DOCUMENTO</span>' : ''}</div>
+        <div><span class="item-ticket">#${esc(t.id)}</span> ${perdido ? '<span class="badge verm pisca">SEM TICKET · CONFERIR DOCUMENTO</span>' : ''} ${Fotos.selo(t)}</div>
         <div class="item-placa">${esc(t.placa)}</div>
         <div class="item-sub">${esc(R.descricaoVeiculo(t, cfg))}</div>
         <div class="item-meta">${esc(R.localVeiculo(t, cfg))} · a caminho há <b data-desde="${t.buscaEm}" data-fmt="cron">00:00</b></div>
@@ -253,7 +301,8 @@
     const cfg = Dados.config, p = t.ticketPerdido;
     const podeCamera = 'BarcodeDetector' in window && !!navigator.mediaDevices;
     const cab = `<div class="centro mb"><div class="item-ticket">Ticket #${esc(t.id)}</div><div class="item-placa">${esc(t.placa)}</div>
-      <div class="item-sub">${esc(R.descricaoVeiculo(t, cfg))}</div><div class="item-meta">${esc(R.localVeiculo(t, cfg))}</div></div>`;
+      <div class="item-sub">${esc(R.descricaoVeiculo(t, cfg))}</div><div class="item-meta">${esc(R.localVeiculo(t, cfg))}</div>
+      <button type="button" class="btn btn-sm btn-contorno mt" id="ent-fotos">📷 Fotos / problema ${Fotos.qtd(t) ? '(' + Fotos.qtd(t) + ')' : ''}</button></div>`;
     const corpo = p
       ? `<div class="card perigo mb"><b>⚠ TICKET PERDIDO</b><br>Quem retira: <b>${esc(p.nome)}</b><br>Documento: <b class="mono">${esc(p.documento)}</b>` +
         `${p.autorizadoPor ? '<br>Autorizado por: ' + esc(p.autorizadoPor) : ''}</div>
@@ -290,6 +339,7 @@
         }
       ]
     });
+    $('#ent-fotos', m.corpo).addEventListener('click', () => Fotos.abrir(id));
     if (p) $('#ent-doc', m.corpo).addEventListener('change', e => { m.botao('ok').disabled = !e.target.checked; });
     const cam = $('#ent-cam', m.corpo);
     if (cam) cam.addEventListener('click', () => lerCamera(codigo => { $('#ent-cod', m.corpo).value = codigo; m.botao('ok').click(); }));
@@ -336,7 +386,7 @@
       <div class="item ${t.ticketPerdido ? 'verm' : (t.status === 'ESTACIONADO' ? '' : cls[t.status][0])}">
         <div class="item-corpo" data-ficha="${esc(t.id)}" style="cursor:pointer">
           <div><span class="item-ticket">#${esc(t.id)}</span> <span class="badge ${cls[t.status][0]}">${cls[t.status][1]}</span>
-            ${t.mensalistaId ? '<span class="badge amar">Mensalista</span>' : ''}</div>
+            ${t.mensalistaId ? '<span class="badge amar">Mensalista</span>' : ''} ${Fotos.selo(t)}</div>
           <div class="item-placa">${esc(t.placa)}</div>
           <div class="item-sub">${esc(R.descricaoVeiculo(t, cfg))}</div>
           <div class="item-meta">${esc(R.localVeiculo(t, cfg))} · há <b data-desde="${t.entradaEm}" data-fmt="min">—</b></div>

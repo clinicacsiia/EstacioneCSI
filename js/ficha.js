@@ -15,7 +15,7 @@
   var ROTULO_ACAO = {
     entrada: 'Entrada registrada', pagamento: 'Pagamento recebido', busca: 'Busca iniciada', busca_desfeita: 'Busca desfeita',
     entrega: 'Veículo entregue', correcao: 'Dados corrigidos', reimpressao: 'Reimpressão', cancelamento: 'Ticket cancelado',
-    estorno: 'Pagamento estornado', nota_emitida: 'Nota fiscal emitida', pagamento_vencido: 'Pagamento vencido (voltou ao caixa)',
+    estorno: 'Pagamento estornado', foto_adicionada: 'Foto adicionada', foto_excluida: 'Foto excluída', fotos_apagadas: 'Fotos antigas apagadas', nota_emitida: 'Nota fiscal emitida', pagamento_vencido: 'Pagamento vencido (voltou ao caixa)',
     login: 'Entrou no sistema', logout: 'Saiu do sistema', logout_inatividade: 'Saiu por inatividade', pin_incorreto: 'PIN incorreto', senha_incorreta: 'Senha incorreta',
     permissoes_alteradas: 'Permissões alteradas',
     caixa_aberto: 'Caixa aberto', caixa_fechado: 'Caixa fechado', sangria: 'Retirada do caixa (sangria)',
@@ -79,6 +79,7 @@
         '<datalist id="ficha-modelos">' + MODELOS.map(function (x) { return '<option value="' + x + '">'; }).join('') + '</datalist>' +
         '<div class="rotulo mt">Avarias já existentes</div><div class="chips" id="e-avarias"></div>' +
         '<label class="rotulo mt" for="e-avdesc">Arranhões, amassados e outras avarias</label><textarea id="e-avdesc" maxlength="200">' + esc(t.avariasDescricao) + '</textarea>' +
+        '<div class="rotulo mt">Fotos de avarias ou problemas</div><div id="e-fotos"></div>' +
         '<label class="rotulo mt" for="e-objvalor">Objetos de valor deixados no veículo</label><textarea id="e-objvalor" maxlength="200">' + esc(t.objetosValor) + '</textarea>' +
         '<label class="rotulo mt" for="e-obs">Observação</label><textarea id="e-obs" maxlength="200">' + esc(t.obs) + '</textarea>' +
         '<div class="dica erro" id="e-erro" role="alert"></div>',
@@ -108,6 +109,7 @@
       }).join('');
     }
     desenharAvarias();
+    Fotos.galeria($('#e-fotos', m.corpo), id, { adicionar: Auth.pode('foto.adicionar'), excluir: Auth.pode('foto.excluir') });
     $('#e-avarias', m.corpo).addEventListener('click', function (ev) {
       var b = ev.target.closest('[data-av]'); if (!b) return;
       var a = b.getAttribute('data-av');
@@ -135,7 +137,7 @@
         (p.nota ? '<br><span class="mudo pequeno">NFS-e nº ' + esc(p.nota.numero) + (p.nota.homologacao ? ' (teste)' : '') + '</span>' : '') + '</td></tr>';
     }).join('');
 
-    Ui.modal({
+    var m = Ui.modal({
       titulo: 'Histórico · #' + t.id + ' · ' + t.placa, largura: 'xl',
       html: '<div class="grade-kpi mb" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">' +
         l('Situação', '<span class="badge ' + (t.status === 'ENTREGUE' ? 'verde' : t.status === 'CANCELADO' ? 'verm' : 'azul') + '">' + esc(R.ROTULO_STATUS[t.status]) + '</span>') +
@@ -154,6 +156,7 @@
           (t.ticketPerdido.telefone ? ' · tel. ' + esc(t.ticketPerdido.telefone) : '') + ' · autorizado por ' + esc(t.ticketPerdido.autorizadoPor || '—') + '</div>' : '') +
         (t.cancelado ? '<div class="card perigo mb pequeno"><b>Cancelado</b> por ' + esc(t.cancelado.porNome) + ' em ' + Ui.dataHora(t.cancelado.em) + ' — ' + esc(t.cancelado.motivo) +
           (t.cancelado.autorizadoPor ? ' (autorizado por ' + esc(t.cancelado.autorizadoPor) + ')' : '') + '</div>' : '') +
+        (Fotos.qtd(t) || Auth.pode('foto.adicionar') ? '<h4 style="margin:14px 0 6px">Fotos de avarias ou problemas</h4><div id="h-fotos"></div>' : '') +
         '<h4 style="margin:14px 0 6px">Pagamentos</h4>' +
         (pags ? '<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Quando</th><th>Operador</th><th class="num">Tarifa</th><th class="num">Desconto</th><th class="num">Recebido</th><th>Forma</th><th>Situação</th></tr></thead><tbody>' + pags + '</tbody></table></div>' : '<div class="mudo">Nenhum pagamento.</div>') +
         '<h4 style="margin:14px 0 6px">Linha do tempo</h4>' +
@@ -162,8 +165,10 @@
             return '<tr><td class="nowrap">' + Ui.dataHora(e.em) + '</td><td>' + esc(e.usuario) + '</td><td>' + esc(ROTULO_ACAO[e.acao] || e.acao) + '</td><td>' + esc(e.detalhe) +
               (e.autorizadoPor ? ' <span class="badge amar">autorizado: ' + esc(e.autorizadoPor) + '</span>' : '') + '</td></tr>';
           }).join('') + '</tbody></table></div>' : '<div class="mudo">Sem registros na auditoria.</div>'),
-      botoes: [{ rotulo: 'Fechar', classe: 'btn-primario', padrao: true, aoClicar: function (m) { m.fechar(); } }]
+      botoes: [{ rotulo: 'Fechar', classe: 'btn-primario', padrao: true, aoClicar: function (mm) { mm.fechar(); } }]
     });
+    var fotos = $('#h-fotos', m.corpo);
+    if (fotos) Fotos.galeria(fotos, id, { adicionar: Auth.pode('foto.adicionar'), excluir: Auth.pode('foto.excluir') });
   }
 
   global.Ficha = { MODELOS: MODELOS, ROTULO_ACAO: ROTULO_ACAO, editar: editar, reimprimir: reimprimir, verTicket: verTicket, historico: historico };

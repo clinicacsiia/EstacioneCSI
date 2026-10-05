@@ -15,7 +15,7 @@
    nenhum dado é entregue sem sessão válida. As regras por perfil
    abaixo separam telas e evitam erro operacional; o servidor só
    reforça o essencial (usuários e configurações, auditoria só cresce,
-   nota fiscal). Quem tem uma sessão válida de caixa/manobrista
+   nota fiscal, fotos). Quem tem uma sessão válida de caixa/manobrista
    conseguiria, com conhecimento técnico, gravar tickets por fora da tela.
    ============================================================ */
 (function (global) {
@@ -44,6 +44,8 @@
     'entrada.registrar': ['manobrista', 'gerente'],
     'entrada.corrigir':  ['manobrista', 'caixa', 'gerente'],
     'ticket.reimprimir': ['manobrista', 'caixa', 'gerente'],
+    'foto.adicionar':    ['manobrista', 'caixa', 'gerente'],
+    'foto.excluir':      ['gerente'],
     'valet.buscar':      ['manobrista', 'gerente'],
     'valet.entregar':    ['manobrista', 'gerente'],
     'valet.desfazer':    ['manobrista', 'gerente'],
@@ -67,6 +69,7 @@
   var GRUPOS_PERMISSAO = [
     { rotulo: 'Registrar entrada de veículos', acoes: ['entrada.registrar'] },
     { rotulo: 'Corrigir dados / reimprimir ticket', acoes: ['entrada.corrigir', 'ticket.reimprimir'] },
+    { rotulo: 'Anexar fotos de avarias / problemas', acoes: ['foto.adicionar'] },
     { rotulo: 'Buscar e entregar veículos', acoes: ['valet.buscar', 'valet.entregar', 'valet.desfazer'] },
     { rotulo: 'Receber pagamentos', acoes: ['pagamento.receber'] },
     { rotulo: 'Dar desconto / cortesia', acoes: ['pagamento.desconto'] },

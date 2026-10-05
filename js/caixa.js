@@ -84,7 +84,7 @@
         <div class="item-corpo">
           <div><span class="item-ticket">#${esc(t.id)}</span>
             ${mens ? '<span class="badge amar">Mensalista</span>' : ''}${excedente ? `<span class="badge verm">EXCEDENTE · já pago ${moeda(dev.quitado)}</span>` : ''}
-            ${(t.avarias && t.avarias.length) || t.obs ? '<span class="badge">com observações</span>' : ''}</div>
+            ${(t.avarias && t.avarias.length) || t.obs ? '<span class="badge">com observações</span>' : ''} ${Fotos.selo(t)}</div>
           <div class="item-placa">${esc(t.placa)}</div>
           <div class="item-sub">${esc(R.descricaoVeiculo(t, cfg))}</div>
           <div class="item-meta">${esc(R.localVeiculo(t, cfg))} · entrada ${Ui.hora(t.entradaEm)} · há <b data-desde="${t.entradaEm}" data-fmt="min">—</b></div>

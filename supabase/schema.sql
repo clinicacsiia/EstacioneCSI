@@ -51,6 +51,19 @@ create table if not exists estaciona.tentativas(chave text primary key, e int no
 create table if not exists estaciona.notas     (pagamento_id text primary key, doc jsonb not null, pos bigint generated always as identity);
 create table if not exists estaciona.copias    (id bigint generated always as identity primary key, criada bigint not null, tipo text not null, dados jsonb not null);
 create table if not exists estaciona.propriedades (chave text primary key, valor text not null);
+-- Fotos de avarias/problemas. O ticket guarda só os ids (campo "fotos"); a imagem (JPEG já reduzido pelo site) e a miniatura ficam aqui,
+-- fora das coleções, para a lista de tickets continuar leve. "bytes" = imagem + miniatura (para o limite de espaço).
+create table if not exists estaciona.fotos (
+  id        text   primary key,
+  ticket    text   not null,
+  em        bigint not null,
+  por       text,
+  por_nome  text   not null default '',
+  imagem    bytea  not null,
+  miniatura bytea  not null,
+  bytes     int    not null
+);
+create index if not exists fotos_em on estaciona.fotos (em);
 
 alter table estaciona.registros    enable row level security;
 alter table estaciona.objetos      enable row level security;
@@ -62,6 +75,7 @@ alter table estaciona.tentativas   enable row level security;
 alter table estaciona.notas        enable row level security;
 alter table estaciona.copias       enable row level security;
 alter table estaciona.propriedades enable row level security;
+alter table estaciona.fotos        enable row level security;
 
 -- Ninguém de fora acessa o schema (a chave pública é o papel "anon").
 revoke all on schema estaciona from public;
@@ -337,13 +351,20 @@ begin
   return jsonb_build_object('s', 200, 'c', jsonb_build_object('ok', true, 'v', estaciona.confirmar(p_col, delta)));
 end $$;
 
-create or replace function estaciona.registrar_log(p_usuario jsonb, p_acao text, p_detalhe text default '') returns void language plpgsql as $$
+-- Com p_ticket, o registro aparece na "linha do tempo" do ticket (como as ações feitas pelo site).
+create or replace function estaciona.registrar_log_ticket(p_usuario jsonb, p_acao text, p_detalhe text, p_ticket text) returns void language plpgsql as $$
 declare reg jsonb; n int;
 begin
   reg := jsonb_build_object('em', estaciona.agora(), 'usuarioId', p_usuario -> 'id', 'usuario', coalesce(p_usuario ->> 'nome', 'sistema'),
                             'perfil', coalesce(p_usuario ->> 'perfil', ''), 'acao', p_acao, 'detalhe', coalesce(p_detalhe, ''));
+  if coalesce(p_ticket, '') <> '' then reg := reg || jsonb_build_object('ticket', p_ticket); end if;
   select greatest(0, count(*) + 1 - estaciona.limite_log()) into n from estaciona.registros where col = 'log';
   perform estaciona.confirmar('log', jsonb_build_object('t', 'a', 'n', n, 'add', jsonb_build_array(reg)));
+end $$;
+
+create or replace function estaciona.registrar_log(p_usuario jsonb, p_acao text, p_detalhe text default '') returns void language plpgsql as $$
+begin
+  perform estaciona.registrar_log_ticket(p_usuario, p_acao, p_detalhe, null);
 end $$;
 
 -- ---------- Usuários, sessões e limite de tentativas ----------
@@ -549,14 +570,19 @@ begin
   return jsonb_build_object('ok', true, 'jaEmitida', false, 'nota', estaciona.nota_publica(reg));
 end $$;
 
-create or replace function estaciona.pode_emitir_nota(p_usuario jsonb) returns boolean language plpgsql stable as $$
-declare perfis text[] := array['caixa', 'gerente']; aj jsonb := (select doc -> 'permissoes' -> 'nota.emitir' from estaciona.objetos where col = 'config');
+-- O perfil pode fazer a ação? Vale o padrão (p_padrao), salvo se o administrador ajustou em config.permissoes (o gerente sempre pode).
+-- Mesma regra de perfisDe em js/auth.js.
+create or replace function estaciona.perfil_pode(p_usuario jsonb, p_acao text, p_padrao text[]) returns boolean language plpgsql stable as $$
+declare perfis text[] := p_padrao; aj jsonb := (select doc -> 'permissoes' -> p_acao from estaciona.objetos where col = 'config');
 begin
   if estaciona.tipo(aj) = 'array' then
     perfis := array['gerente'] || coalesce((select array_agg(x) from jsonb_array_elements_text(aj) x where x in ('manobrista', 'caixa')), '{}');
   end if;
   return p_usuario ->> 'perfil' = any (perfis);
 end $$;
+
+create or replace function estaciona.pode_emitir_nota(p_usuario jsonb) returns boolean language sql stable as
+$$ select estaciona.perfil_pode(p_usuario, 'nota.emitir', array['caixa', 'gerente']) $$;
 
 -- ---------- Painel da TV (público: só números de ticket) ----------
 create or replace function estaciona.painel() returns jsonb language sql stable as $$
@@ -568,6 +594,123 @@ create or replace function estaciona.painel() returns jsonb language sql stable 
     'aCaminho', coalesce((select jsonb_agg(r.id order by coalesce(nullif(r.doc ->> 'buscaEm', '')::numeric, 0), r.pos)
                             from estaciona.registros r where r.col = 'tickets' and r.doc ->> 'status' = 'A_CAMINHO'), '[]'::jsonb))
 $$;
+
+-- ---------- Fotos de avarias e problemas ----------
+-- O site reduz cada foto (JPEG de até ~1024 px) e manda também uma miniatura. O servidor confere o formato e os limites.
+create or replace function estaciona.max_fotos() returns int language sql immutable as $$ select 10 $$;  -- por veículo
+-- Espaço total para fotos. O plano gratuito do Supabase tem 500 MB para o banco inteiro: quando este limite chega, o sistema recusa
+-- fotos novas (com aviso) em vez de deixar o banco encher e travar as entradas. Para mudar, edite o número e rode este arquivo de novo.
+create or replace function estaciona.limite_fotos_bytes() returns bigint language sql immutable as $$ select 250::bigint * 1024 * 1024 $$;
+
+create or replace function estaciona.url_jpeg(p_dados bytea) returns text language sql immutable as
+$$ select 'data:image/jpeg;base64,' || replace(encode(p_dados, 'base64'), E'\n', '') $$;
+
+-- "data:image/jpeg;base64,..." -> bytes. Interrompe com erro se não for um JPEG ou passar de p_max bytes.
+create or replace function estaciona.ler_jpeg(p_url text, p_max int) returns bytea language plpgsql as $$
+declare b bytea;
+begin
+  if p_url is null or left(p_url, 23) <> 'data:image/jpeg;base64,' then perform estaciona.falhar(400, 'Foto inválida.'); end if;
+  if length(p_url) > p_max::bigint * 4 / 3 + 64 then perform estaciona.falhar(413, 'Foto grande demais.'); end if;
+  begin
+    b := decode(substr(p_url, 24), 'base64');
+  exception when others then
+    perform estaciona.falhar(400, 'Foto inválida.');
+  end;
+  if octet_length(b) < 3 or get_byte(b, 0) <> 255 or get_byte(b, 1) <> 216 or get_byte(b, 2) <> 255 then perform estaciona.falhar(400, 'Foto inválida.'); end if;
+  if octet_length(b) > p_max then perform estaciona.falhar(413, 'Foto grande demais.'); end if;
+  return b;
+end $$;
+
+-- Guarda a foto e inclui o id dela no ticket (isso sobe a versão de "tickets": todas as telas veem o 📷 sozinhas).
+create or replace function estaciona.adicionar_foto(p_usuario jsonb, d jsonb) returns jsonb language plpgsql as $$
+declare
+  tid text := btrim(coalesce(d ->> 'ticket', ''));
+  img bytea := estaciona.ler_jpeg(d ->> 'imagem', 700000);
+  mini bytea := estaciona.ler_jpeg(d ->> 'miniatura', 60000);
+  t jsonb; ids jsonb; fid text; agora bigint := estaciona.agora();
+begin
+  select doc into t from estaciona.registros where col = 'tickets' and id = tid;
+  if t is null then perform estaciona.falhar(404, 'Ticket não encontrado.'); end if;
+  ids := case when estaciona.tipo(t -> 'fotos') = 'array' then t -> 'fotos' else '[]'::jsonb end;
+  if jsonb_array_length(ids) >= estaciona.max_fotos() then
+    perform estaciona.falhar(400, 'Este veículo já tem ' || estaciona.max_fotos() || ' fotos (o máximo).');
+  end if;
+  if (select coalesce(sum(bytes), 0) from estaciona.fotos) + octet_length(img) + octet_length(mini) > estaciona.limite_fotos_bytes() then
+    perform estaciona.falhar(413, 'O espaço reservado para fotos acabou. Avise o gerente.');
+  end if;
+  fid := 'f_' || substr(estaciona.sha256_hex(gen_random_uuid()::text), 1, 16);
+  insert into estaciona.fotos(id, ticket, em, por, por_nome, imagem, miniatura, bytes)
+    values (fid, tid, agora, p_usuario ->> 'id', coalesce(p_usuario ->> 'nome', ''), img, mini, octet_length(img) + octet_length(mini));
+  perform estaciona.confirmar('tickets', jsonb_build_object('t', 'm', 'rm', '[]'::jsonb,
+    'up', jsonb_build_array(t || jsonb_build_object('fotos', ids || to_jsonb(fid)))));
+  perform estaciona.registrar_log_ticket(p_usuario, 'foto_adicionada', '#' || tid || ' ' || coalesce(t ->> 'placa', ''), tid);
+  return jsonb_build_object('ok', true, 'foto', jsonb_build_object('id', fid, 'em', agora, 'porNome', coalesce(p_usuario ->> 'nome', '')));
+end $$;
+
+-- Só o gerente apaga. Tira o id do ticket e a imagem do banco.
+create or replace function estaciona.excluir_foto(p_usuario jsonb, p_id text) returns jsonb language plpgsql as $$
+declare f record; t jsonb;
+begin
+  select * into f from estaciona.fotos where id = p_id;
+  if not found then perform estaciona.falhar(404, 'Foto não encontrada.'); end if;
+  select doc into t from estaciona.registros where col = 'tickets' and id = f.ticket;
+  if t is not null and estaciona.tipo(t -> 'fotos') = 'array' and (t -> 'fotos') @> to_jsonb(p_id) then
+    perform estaciona.confirmar('tickets', jsonb_build_object('t', 'm', 'rm', '[]'::jsonb, 'up', jsonb_build_array(
+      t || jsonb_build_object('fotos', coalesce((select jsonb_agg(e) from jsonb_array_elements(t -> 'fotos') e where e #>> '{}' <> p_id), '[]'::jsonb)))));
+  end if;
+  delete from estaciona.fotos where id = p_id;
+  perform estaciona.registrar_log_ticket(p_usuario, 'foto_excluida', '#' || f.ticket || ' ' || coalesce(t ->> 'placa', ''), f.ticket);
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- Miniaturas das fotos de um ticket (só as que o próprio ticket lista: um id de ticket reaproveitado nunca mostra foto de outro carro).
+create or replace function estaciona.fotos_do_ticket(p_ticket text) returns jsonb language plpgsql as $$
+declare t jsonb;
+begin
+  select doc into t from estaciona.registros where col = 'tickets' and id = p_ticket;
+  if t is null then perform estaciona.falhar(404, 'Ticket não encontrado.'); end if;
+  return jsonb_build_object('ok', true, 'fotos', coalesce((
+    select jsonb_agg(jsonb_build_object('id', f.id, 'em', f.em, 'porNome', f.por_nome, 'miniatura', estaciona.url_jpeg(f.miniatura)) order by f.em, f.id)
+      from estaciona.fotos f
+     where estaciona.tipo(t -> 'fotos') = 'array' and (t -> 'fotos') @> to_jsonb(f.id)), '[]'::jsonb));
+end $$;
+
+create or replace function estaciona.foto_completa(p_id text) returns jsonb language plpgsql as $$
+declare f record;
+begin
+  select * into f from estaciona.fotos where id = p_id;
+  if not found then perform estaciona.falhar(404, 'Foto não encontrada.'); end if;
+  return jsonb_build_object('ok', true, 'foto', jsonb_build_object('id', f.id, 'ticket', f.ticket, 'em', f.em, 'porNome', f.por_nome, 'imagem', estaciona.url_jpeg(f.imagem)));
+end $$;
+
+-- Libera espaço: apaga as fotos com mais de p_dias dias de veículos que já saíram (entregues ou cancelados) ou que não existem mais,
+-- e tira os ids dos tickets (assim o 📷 some junto). Veículos ainda no pátio nunca perdem foto. Rode no SQL Editor:
+--   select estaciona.apagar_fotos_antigas(90);
+-- Para ver o espaço usado:  select count(*) fotos, pg_size_pretty(coalesce(sum(bytes), 0)::bigint) espaco from estaciona.fotos;
+create or replace function estaciona.apagar_fotos_antigas(p_dias int) returns text language plpgsql as $$
+declare corte bigint; ids text[]; novos jsonb;
+begin
+  if p_dias is null or p_dias < 7 then return 'Informe pelo menos 7 dias.'; end if;
+  perform estaciona.travar();
+  corte := estaciona.agora() - p_dias::bigint * 86400000;
+  select coalesce(array_agg(f.id), '{}') into ids
+    from estaciona.fotos f
+    left join estaciona.registros r on r.col = 'tickets' and r.id = f.ticket
+   where f.em < corte and (r.id is null or r.doc ->> 'status' in ('ENTREGUE', 'CANCELADO'));
+  if cardinality(ids) = 0 then return 'Nenhuma foto com mais de ' || p_dias || ' dias.'; end if;
+  select coalesce(jsonb_agg(r.doc || jsonb_build_object('fotos', coalesce((
+           select jsonb_agg(e) from jsonb_array_elements(r.doc -> 'fotos') e where not ((e #>> '{}') = any (ids))), '[]'::jsonb))), '[]'::jsonb)
+    into novos
+    from estaciona.registros r
+   where r.col = 'tickets' and estaciona.tipo(r.doc -> 'fotos') = 'array'
+     and exists (select 1 from jsonb_array_elements_text(r.doc -> 'fotos') x where x = any (ids));
+  if jsonb_array_length(novos) > 0 then
+    perform estaciona.confirmar('tickets', jsonb_build_object('t', 'm', 'rm', '[]'::jsonb, 'up', novos));
+  end if;
+  delete from estaciona.fotos where id = any (ids);
+  perform estaciona.registrar_log('{}'::jsonb, 'fotos_apagadas', cardinality(ids) || ' foto(s) com mais de ' || p_dias || ' dias');
+  return cardinality(ids) || ' foto(s) apagada(s).';
+end $$;
 
 -- ---------- Restaurar / zerar ----------
 -- Antes de substituir tudo, guarda uma cópia (as 5 últimas) em estaciona.copias. Tudo numa transação: se algo falhar, nada muda.
@@ -677,6 +820,12 @@ begin
       perform estaciona.exigir(p_token, true);
       return estaciona.ok(jsonb_build_object('habilitado', true, 'provedor', 'mock', 'homologacao', true, 'teste', true));
     end if;
+    if caminho = '/api/fotos' then -- ?ticket=1001 (miniaturas do veículo)  ou  ?id=f_... (a foto inteira)
+      perform estaciona.exigir(p_token, true);
+      if consulta ~ '(^|&)id=[A-Za-z0-9_-]+(&|$)' then return estaciona.ok(estaciona.foto_completa(substring(consulta from '(?:^|&)id=([A-Za-z0-9_-]+)'))); end if;
+      if consulta ~ '(^|&)ticket=[A-Za-z0-9_-]+(&|$)' then return estaciona.ok(estaciona.fotos_do_ticket(substring(consulta from '(?:^|&)ticket=([A-Za-z0-9_-]+)'))); end if;
+      perform estaciona.falhar(400, 'Informe o ticket ou a foto.');
+    end if;
     perform estaciona.falhar(404, 'Não encontrado.');
   end if;
 
@@ -693,6 +842,12 @@ begin
       if eu is not null then perform estaciona.sessao_atualizar_senha(p_token, eu ->> 'hash'); end if;
     end if;
     return r;
+  end if;
+
+  if p_metodo = 'DELETE' and caminho = '/api/fotos' then
+    u := estaciona.exigir(p_token, true, array['gerente']);
+    if consulta !~ '(^|&)id=[A-Za-z0-9_-]+(&|$)' then perform estaciona.falhar(400, 'Informe a foto.'); end if;
+    return estaciona.ok(estaciona.excluir_foto(u, substring(consulta from '(?:^|&)id=([A-Za-z0-9_-]+)')));
   end if;
 
   if p_metodo = 'POST' then
@@ -715,7 +870,13 @@ begin
       perform estaciona.exigir(p_token, true, array['gerente']);
       perform estaciona.substituir_tudo(jsonb_build_object('usuarios', '[]'::jsonb, 'tickets', '[]'::jsonb, 'caixas', '[]'::jsonb,
         'mensalistas', '[]'::jsonb, 'log', '[]'::jsonb, 'config', '{}'::jsonb, 'meta', '{}'::jsonb));
+      delete from estaciona.fotos; -- "apagar tudo" apaga as fotos também (restaurar um backup NÃO apaga: os tickets do backup podem apontar para elas)
       return estaciona.ok(jsonb_build_object('ok', true));
+    end if;
+    if caminho = '/api/fotos' then
+      u := estaciona.exigir(p_token, true);
+      if not estaciona.perfil_pode(u, 'foto.adicionar', array['manobrista', 'caixa', 'gerente']) then perform estaciona.falhar(403, 'Seu perfil não pode adicionar fotos.'); end if;
+      return estaciona.ok(estaciona.adicionar_foto(u, p_corpo));
     end if;
     if caminho = '/api/nfse/emitir' then
       u := estaciona.exigir(p_token, true);
