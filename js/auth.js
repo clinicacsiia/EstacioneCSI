@@ -94,6 +94,13 @@
     'pagina.caixa': ['pagamento.receber', 'caixa.operar']
   };
 
+  // Manobristas que o administrador liberou (usuário.recebePagamento) recebem pagamentos pela aba Buscar
+  // e abrem/fecham o próprio caixa. Desconto, ticket perdido, sangria e nota fiscal continuam com o caixa/gerente.
+  var ACOES_RECEBER_MANOBRISTA = ['pagamento.receber', 'caixa.operar'];
+  function manobristaRecebe(u, acao) {
+    return !!u && u.perfil === 'manobrista' && u.recebePagamento === true && ACOES_RECEBER_MANOBRISTA.indexOf(acao) !== -1;
+  }
+
   function acaoAjustavel(acao) {
     return GRUPOS_PERMISSAO.some(function (g) { return !g.fixo && g.acoes.indexOf(acao) !== -1; });
   }
@@ -207,8 +214,11 @@
 
     pode: function (acao) {
       var u = Auth.atual();
-      return !!u && perfilPode(u.perfil, acao);
+      return !!u && (perfilPode(u.perfil, acao) || manobristaRecebe(u, acao));
     },
+
+    /** Manobrista liberado pelo admin para receber pagamentos (funciona como caixa na aba Buscar). */
+    manobristaRecebe: function (u) { return manobristaRecebe(u || Auth.atual(), 'pagamento.receber'); },
 
     perfilPode: perfilPode,
 
@@ -249,9 +259,9 @@
       if (PERFIS_OPERACIONAIS.indexOf(d.perfil) === -1) return { ok: false, erro: 'Escolha o perfil do usuário.' };
       var errSenha = Auth.validarNovaSenha(d.senha); if (errSenha) return { ok: false, erro: errSenha };
       var salt = novoSalt();
-      var usuario = { id: Dados.novoId('u'), nome: nome, login: login, perfil: d.perfil, salt: salt, hash: hashSenha(d.senha, salt), trocarSenha: true, ativo: true, criadoEm: Date.now(), ultimoLogin: null };
+      var usuario = { id: Dados.novoId('u'), nome: nome, login: login, perfil: d.perfil, recebePagamento: d.perfil === 'manobrista' && d.recebePagamento === true, salt: salt, hash: hashSenha(d.senha, salt), trocarSenha: true, ativo: true, criadoEm: Date.now(), ultimoLogin: null };
       try { Dados.mudar('usuarios', function (l) { l.push(usuario); }); } catch (e) { return { ok: false, erro: e.message }; }
-      Auth.registrar('usuario_criado', nome + ' (' + login + ' · ' + PERFIS[d.perfil].rotulo + ')');
+      Auth.registrar('usuario_criado', nome + ' (' + login + ' · ' + PERFIS[d.perfil].rotulo + (usuario.recebePagamento ? ' · recebe pagamentos' : '') + ')');
       return { ok: true, usuario: usuario };
     },
 
@@ -265,6 +275,7 @@
       var login = !ehAdmin && d.login !== undefined ? normalizarLogin(d.login) : alvo.login;
       var perfil = !ehAdmin && d.perfil !== undefined ? d.perfil : alvo.perfil;
       var ativo = !ehAdmin && d.ativo !== undefined ? !!d.ativo : alvo.ativo;
+      var recebe = perfil === 'manobrista' && (d.recebePagamento !== undefined ? d.recebePagamento === true : alvo.recebePagamento === true);
       if (nome.length < 2 || nome.length > 30) return { ok: false, erro: 'Informe um nome de 2 a 30 letras.' };
       if (!ehAdmin) {
         var errLogin = validarLogin(login); if (errLogin) return { ok: false, erro: errLogin };
@@ -284,11 +295,11 @@
       try {
         Dados.mudar('usuarios', function (l) {
           var u = l.filter(function (x) { return x.id === id; })[0];
-          u.nome = nome; u.login = login; u.perfil = perfil; u.ativo = ativo;
+          u.nome = nome; u.login = login; u.perfil = perfil; u.ativo = ativo; u.recebePagamento = recebe;
           if (d.senha) { u.salt = novoSalt(); u.hash = hashSenha(d.senha, u.salt); u.trocarSenha = temporaria; }
         });
       } catch (e) { return { ok: false, erro: e.message }; }
-      Auth.registrar('usuario_alterado', nome + ' (' + login + ')' + (d.senha ? (temporaria ? ' (senha temporária definida)' : ' (senha redefinida)') : '') + (ativo ? '' : ' (desativado)'));
+      Auth.registrar('usuario_alterado', nome + ' (' + login + ')' + (d.senha ? (temporaria ? ' (senha temporária definida)' : ' (senha redefinida)') : '') + (ativo ? '' : ' (desativado)') + (recebe !== (alvo.recebePagamento === true) ? (recebe ? ' (liberado para receber pagamentos)' : ' (sem permissão para receber pagamentos)') : ''));
       return { ok: true };
     },
 

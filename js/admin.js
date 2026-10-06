@@ -37,7 +37,7 @@
     const l = Dados.usuarios.slice().sort((a, b) => (a.perfil === 'admin' ? -1 : 0) - (b.perfil === 'admin' ? -1 : 0) || (b.ativo - a.ativo) || a.nome.localeCompare(b.nome));
     alvo.innerHTML = `<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Situação</th><th>Último acesso</th><th></th></tr></thead><tbody>` +
       l.map(u => `<tr><td class="negrito">${esc(u.nome)}${u.id === usuario.id ? ' <span class="badge azul">você</span>' : ''}</td><td class="mono">${esc(u.login)}</td>
-        <td>${Auth.PERFIS[u.perfil].emoji} ${esc(Auth.PERFIS[u.perfil].rotulo)}</td>
+        <td>${Auth.PERFIS[u.perfil].emoji} ${esc(Auth.PERFIS[u.perfil].rotulo)}${u.recebePagamento ? ' <span class="badge verde" title="Recebe pagamentos pela aba Buscar">💵 recebe</span>' : ''}</td>
         <td>${u.ativo ? '<span class="badge verde">Ativo</span>' : '<span class="badge">Inativo</span>'}${u.trocarSenha ? ' <span class="badge amar" title="A pessoa ainda vai trocar a senha temporária no próximo acesso">Senha temporária</span>' : ''}</td><td>${u.ultimoLogin ? Ui.dataHora(u.ultimoLogin) : '—'}</td>
         <td class="gap"><button type="button" class="btn btn-sm btn-contorno" data-u="${esc(u.id)}">Editar</button>${u.perfil === 'admin' ? '' : `<button type="button" class="btn btn-sm btn-contorno" data-reset="${esc(u.id)}" aria-label="Redefinir senha de ${esc(u.nome)}">🔑 Redefinir senha</button>`}${u.perfil === 'admin' || u.id === usuario.id ? '' : `<button type="button" class="btn btn-sm btn-contorno" data-excluir="${esc(u.id)}" aria-label="Excluir ${esc(u.nome)}">🗑 Excluir</button>`}</td></tr>`).join('') + '</tbody></table></div>';
   }
@@ -104,6 +104,7 @@
           <div class="campo-senha"><input id="us-senha" type="password" maxlength="40" autocomplete="new-password" ${ehAdmin ? 'data-foco' : ''}>
           <button type="button" class="btn btn-contorno" id="us-ver" aria-label="Mostrar senha" aria-pressed="false">👁</button></div>
           ${ehAdmin ? '' : '<button type="button" class="btn btn-sm btn-contorno mt" id="us-gerar">🎲 Gerar senha</button><div class="dica">A pessoa troca esta senha no primeiro acesso.</div>'}</div>
+        ${ehAdmin ? '' : `<label class="check mb" id="us-recebe-box" ${u0 && u0.perfil !== 'manobrista' ? 'hidden' : ''}><input type="checkbox" id="us-recebe" ${u0 && u0.recebePagamento ? 'checked' : ''}> Pode receber pagamentos (funciona como caixa quando busca um veículo)</label>`}
         ${u0 && !ehAdmin ? `<label class="check"><input type="checkbox" id="us-ativo" ${u0.ativo ? 'checked' : ''}> Usuário ativo (desmarque para bloquear o acesso)</label>` : ''}
         <div class="dica erro" id="us-erro" role="alert"></div>`,
       botoes: [
@@ -116,10 +117,11 @@
             if (u0) {
               r = Auth.atualizarUsuario(id, {
                 nome: val('#us-nome'), login: val('#us-login'), perfil: val('#us-perfil'),
-                senha: senha || undefined, ativo: ehAdmin ? undefined : $('#us-ativo', c).checked
+                senha: senha || undefined, ativo: ehAdmin ? undefined : $('#us-ativo', c).checked,
+                recebePagamento: ehAdmin ? undefined : $('#us-recebe', c).checked
               });
             } else {
-              r = Auth.criarUsuario({ nome: val('#us-nome'), login: val('#us-login'), perfil: val('#us-perfil'), senha: senha });
+              r = Auth.criarUsuario({ nome: val('#us-nome'), login: val('#us-login'), perfil: val('#us-perfil'), senha: senha, recebePagamento: $('#us-recebe', c).checked });
             }
             if (!r.ok) { $('#us-erro', c).textContent = r.erro; return; }
             m.fechar(); Ui.toast('Usuário salvo.'); atualizarUsuarios();
@@ -128,6 +130,9 @@
       ]
     });
     ligarCampoSenha(modal);
+    const perfilSel = $('#us-perfil', modal.corpo);
+    if (perfilSel) perfilSel.addEventListener('change', () => { $('#us-recebe-box', modal.corpo).hidden = perfilSel.value !== 'manobrista'; });
+    if (perfilSel && !u0) $('#us-recebe-box', modal.corpo).hidden = true;
   }
 
   // ============================================================

@@ -369,6 +369,87 @@
     atualizarMarcas();
   }
 
+  // ============================================================
+  //  RECEBER E BUSCAR (só para quem o administrador liberou)
+  //  Digita a placa → o carro aparece → recebe o pagamento (como o caixa)
+  //  → "Buscar agora". Precisa de caixa aberto: o sistema pede o fundo de troco.
+  // ============================================================
+  const recebe = Auth.pode('pagamento.receber');
+  $('#bloco-receber').hidden = !recebe;
+  $('#bloco-caixa').hidden = !recebe;
+
+  function renderReceber() {
+    if (!recebe) return;
+    const agora = Date.now(), cfg = Dados.config, q = $('#busca-receber').value.trim();
+    const todos = Dados.tickets.filter(t => t.status === 'ESTACIONADO');
+    // sem digitar nada, a lista não aparece: o manobrista procura o carro pela placa
+    const lista = q ? R.buscar(todos, q).sort((a, b) => b.entradaEm - a.entradaEm) : [];
+    $('#lista-receber').innerHTML = !q ? '' : lista.length ? lista.slice(0, 30).map(t => {
+      const mens = Op.mensalistaDe(t, agora), dev = R.calcularDevido(t, agora, cfg, mens);
+      return `<div class="item ${dev.quitado > 0 ? 'amar' : ''}">
+        <div class="item-corpo" data-ficha="${esc(t.id)}" role="button" tabindex="0" aria-label="${esc(rotuloFicha(t))}">
+          <div><span class="item-ticket">#${esc(t.id)}</span> ${mens ? '<span class="badge amar">Mensalista</span>' : ''}${dev.quitado > 0 ? `<span class="badge verm">EXCEDENTE · já pago ${R.moeda(dev.quitado)}</span>` : ''} ${Fotos.selo(t)}</div>
+          <div class="item-placa">${esc(t.placa)}</div>
+          <div class="item-sub">${esc(R.descricaoVeiculo(t, cfg))}</div>
+          <div class="item-meta">${esc(R.localVeiculo(t, cfg))} · entrada ${Ui.hora(t.entradaEm)} · há <b data-desde="${t.entradaEm}" data-fmt="min">—</b></div>
+        </div>
+        <div class="item-acoes"><div class="item-valor">${dev.aCobrar === 0 ? '<span class="mudo" style="font-size:1rem">sem cobrança</span>' : R.moeda(dev.aCobrar)}</div>
+          <button type="button" class="btn btn-sucesso btn-grande" data-acao="receber" data-id="${esc(t.id)}" aria-label="Receber pagamento do veículo ${esc(t.placa)}, ticket ${esc(t.id)}"><span aria-hidden="true">💵</span> RECEBER</button></div>
+      </div>`;
+    }).join('') : `<div class="vazio">Nenhum veículo aguardando pagamento com essa placa ou ticket.</div>`;
+    const c = $('#cont-receber'); c.textContent = todos.length; c.classList.toggle('zero', !todos.length);
+    $('#dica-receber').textContent = q ? 'Toque em RECEBER no veículo certo.' : 'Digite a placa: o carro aparece e você recebe o pagamento antes de buscar.';
+  }
+
+  function receber(id) {
+    const iniciar = () => Pagamento.abrir(id, {
+      buscarAgora: true,
+      semCaixa: () => Pagamento.abrirCaixa(() => iniciar()),
+      aoConcluir: () => { $('#busca-receber').value = ''; renderReceber(); }
+    });
+    iniciar();
+  }
+
+  if (recebe) {
+    $('#busca-receber').addEventListener('input', renderReceber);
+    $('#busca-receber').addEventListener('keydown', ev => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      const q = $('#busca-receber').value.trim(); if (!q) return;
+      const lista = R.buscar(Dados.tickets.filter(t => t.status === 'ESTACIONADO'), q);
+      if (lista.length === 1) receber(lista[0].id);
+    });
+    $('#lista-receber').addEventListener('click', ev => {
+      const b = ev.target.closest('[data-acao="receber"]');
+      if (b) { receber(b.dataset.id); return; }
+      const f = ev.target.closest('[data-ficha]'); if (f) Ficha.editar(f.dataset.ficha);
+    });
+    $('#lista-receber').addEventListener('keydown', teclaCartao);
+    $('#bloco-caixa').addEventListener('click', ev => {
+      const a = ev.target.closest('[data-acao]'); if (!a) return;
+      if (a.dataset.acao === 'abrir-caixa') Pagamento.abrirCaixa(() => renderCaixaManobrista());
+      else if (a.dataset.acao === 'fechar-caixa') Pagamento.fecharCaixa();
+    });
+  }
+
+  // "Meu caixa": mostra o que o manobrista recebeu no caixa aberto e deixa fechá-lo no fim do turno
+  function renderCaixaManobrista() {
+    if (!recebe) return;
+    const box = $('#bloco-caixa'), cx = Op.caixaAberto(usuario.id);
+    if (!cx) {
+      box.innerHTML = `<h3 class="mb">💵 Meu caixa</h3><p class="mudo" style="margin-top:0">Nenhum caixa aberto. Ele é aberto automaticamente na primeira vez que você for receber um pagamento.</p>
+        <button type="button" class="btn btn-contorno btn-bloco" data-acao="abrir-caixa">🔓 Abrir caixa</button>`;
+      return;
+    }
+    const res = R.resumoCaixa(cx, Dados.tickets);
+    box.innerHTML = `<h3 class="mb">💵 Meu caixa nº ${cx.numero}</h3>
+      <div class="grade-3 mb"><div class="centro"><div class="negrito" style="font-size:1.4rem">${R.moeda(res.total)}</div><div class="mudo pequeno">Recebido</div></div>
+        <div class="centro"><div class="negrito" style="font-size:1.4rem">${res.qtd}</div><div class="mudo pequeno">Pagamentos</div></div>
+        <div class="centro"><div class="negrito" style="font-size:1.4rem">${R.moeda(res.esperadoDinheiro)}</div><div class="mudo pequeno">Dinheiro na gaveta</div></div></div>
+      <p class="mudo pequeno">Aberto desde ${Ui.dataHora(cx.abertoEm)} · fundo ${R.moeda(cx.fundo)}. Ao terminar o turno, feche o caixa e confira o dinheiro.</p>
+      <button type="button" class="btn btn-perigo btn-bloco" data-acao="fechar-caixa">🔒 Fechar caixa</button>`;
+  }
+
   // contadores das abas: o número aparece na tela e é lido junto com o nome da aba
   function atualizarMarcas() {
     const nf = Dados.tickets.filter(t => t.status === 'PAGO').length, np = R.ativos(Dados.tickets).length;
@@ -561,7 +642,7 @@
   //  DESENHO GERAL + TEMPO REAL
   // ============================================================
   function renderTudo() {
-    renderCategorias(); renderPatios(); renderCores(); renderAvarias(); renderFila();
+    renderCategorias(); renderPatios(); renderCores(); renderAvarias(); renderFila(); renderReceber(); renderCaixaManobrista();
     if (!$('#aba-fechamento').hidden) renderFechamento();
     if (!$('#aba-patio').hidden) renderPatio();
     atualizarInfoPlaca();
