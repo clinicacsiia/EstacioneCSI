@@ -118,12 +118,50 @@
     inPlaca.setAttribute('aria-invalid', String($('#placa-info').classList.contains('erro')));
   }
 
+  // ----- placa repetida: puxa os dados da última visita (só preenche o que está vazio) -----
+  const ROTULO_AUTO = { categoria: 'tipo', modelo: 'modelo', cor: 'cor', telefone: 'telefone', cpf: 'CPF' };
+  let auto = {};          // campo -> valor que ESTE código preencheu (para desfazer se a placa mudar)
+  let autoChave = null;   // placa (sem hífen) cujos dados já foram puxados
+  let autoVisita = null;  // ticket usado como fonte
+
+  const ultimaVisita = chave => Dados.tickets
+    .filter(t => t.status !== 'CANCELADO' && R.chavePlaca(t.placa) === chave)
+    .sort((a, b) => b.entradaEm - a.entradaEm)[0];
+
+  /** Se a placa mudou (erro de digitação corrigido) tira o que foi puxado e o manobrista não mexeu. */
+  function limparAuto() {
+    if (!autoChave && !Object.keys(auto).length) return;
+    ['modelo', 'telefone', 'cpf'].forEach(c => { if (auto[c] !== undefined && $('#' + c).value === auto[c]) $('#' + c).value = ''; });
+    if (auto.cor !== undefined && est.cor === auto.cor) est.cor = '';
+    if (auto.categoria !== undefined && est.categoria === auto.categoria) est.categoria = 'carro';
+    const mexeu = Object.keys(auto).length > 0;
+    auto = {}; autoChave = null; autoVisita = null;
+    if (mexeu) { renderCategorias(); renderCores(); atualizarInfoCpf(); }
+  }
+
+  function aplicarHistorico(chave) {
+    if (autoChave === chave) return;
+    limparAuto();
+    autoChave = chave;
+    const u = ultimaVisita(chave);
+    if (!u) return;
+    autoVisita = u;
+    const vazio = id => !$('#' + id).value.trim();
+    if (u.modelo && vazio('modelo')) { $('#modelo').value = u.modelo; auto.modelo = u.modelo; }
+    if (u.telefone && vazio('telefone')) { $('#telefone').value = u.telefone; auto.telefone = u.telefone; }
+    if (u.cpf && vazio('cpf')) { const f = R.formatarCpf(u.cpf); $('#cpf').value = f; auto.cpf = f; }
+    if (u.cor && !est.cor) { est.cor = u.cor; auto.cor = u.cor; }
+    if (u.categoria && u.categoria !== est.categoria && est.categoria === 'carro' && Dados.config.tabela[u.categoria]) { est.categoria = u.categoria; auto.categoria = u.categoria; }
+    if (Object.keys(auto).length) { renderCategorias(); renderCores(); atualizarInfoCpf(); }
+  }
+
   function calcularInfoPlaca() {
     const v = inPlaca.value, info = $('#placa-info'), livre = chkLivre.checked;
     $('#linha-livre').hidden = !(v.length >= 6 || livre);
-    if (!v) { info.className = 'dica'; info.textContent = ''; return; }
+    if (!v) { limparAuto(); info.className = 'dica'; info.textContent = ''; return; }
     const res = R.validarPlaca(v, livre);
     if (!res.ok) {
+      limparAuto();
       info.className = v.length < 7 ? 'dica' : 'dica erro';
       info.textContent = v.length < 7 ? 'Digite os 7 caracteres da placa.' : res.erro;
       return;
@@ -131,13 +169,17 @@
     const chave = R.chavePlaca(res.placa);
     const dentro = Dados.tickets.find(t => R.estaAtivo(t) && R.chavePlaca(t.placa) === chave);
     if (dentro) {
+      limparAuto();
       info.className = 'dica erro';
       info.textContent = `⚠ Este veículo já está no pátio: ticket #${dentro.id} (${R.nomePatio(Dados.config, dentro.patio)}).`;
       return;
     }
     const mens = R.mensalistaVigente(chave, Dados.mensalistas, Date.now());
+    aplicarHistorico(chave);
+    const puxados = Object.keys(auto).map(c => ROTULO_AUTO[c]);
     info.className = 'dica ok';
-    info.textContent = `✔ ${res.formato} · ${res.placa}` + (mens ? ` · MENSALISTA (${mens.nome}) — sem cobrança` : '');
+    info.textContent = `✔ ${res.formato} · ${res.placa}` + (mens ? ` · MENSALISTA (${mens.nome}) — sem cobrança` : '') +
+      (autoVisita && puxados.length ? ` · Já esteve aqui em ${Ui.data(autoVisita.entradaEm)}. Preenchi: ${puxados.join(', ')}. Confira.` : '');
   }
 
   inPlaca.addEventListener('input', () => {
@@ -237,6 +279,7 @@
   window.addEventListener('beforeunload', ev => { if (fotosPendentes.length) { ev.preventDefault(); ev.returnValue = ''; } });
 
   function limparFormulario() {
+    auto = {}; autoChave = null; autoVisita = null;
     inPlaca.value = ''; chkLivre.checked = false;
     $('#modelo').value = ''; $('#vaga').value = ''; $('#telefone').value = ''; $('#obs').value = '';
     inCpf.value = ''; $('#avarias-desc').value = ''; $('#objetos-valor').value = '';
