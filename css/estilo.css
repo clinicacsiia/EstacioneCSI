@@ -110,7 +110,7 @@ body.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh;
 .contador { background: var(--azul-800); color: #fff; border-radius: 999px; padding: 1px 9px; font-size: .85rem; }
 .contador.zero { background: var(--cinza-300); color: var(--cinza-700); }
 legend.rotulo { padding: 0; float: none; width: 100%; }
-fieldset.grupo { border: 0; margin: 0; min-width: 0; }
+fieldset.grupo { border: 0; padding: 0; margin-left: 0; margin-right: 0; margin-bottom: 0; min-width: 0; }
 fieldset.card { padding: 16px; }
 .obrig { font-weight: 400; color: var(--cinza-500); }
 .rotulo { display: block; font-weight: 600; font-size: 1rem; color: var(--cinza-700); margin-bottom: 6px; }
@@ -289,11 +289,12 @@ details.card > summary .mudo { font-weight: 400; }
 .foto-info { margin-top: 8px; text-align: center; color: var(--cinza-700); font-size: .9rem; }
 
 /* ---------- Toasts ---------- */
-#toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 84px; z-index: 200; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 460px); pointer-events: none; }
+/* no alto da tela: embaixo cobriria o botão principal (IMPRIMIR TICKET) e engoliria o toque */
+#toasts { position: fixed; left: 50%; transform: translateX(-50%); top: calc(var(--altura-topo) + 8px); z-index: 200; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 460px); pointer-events: none; }
 .toast { pointer-events: auto; cursor: pointer; padding: 13px 16px; border-radius: 10px; color: #fff; font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,.3); animation: entra .2s ease-out; }
 .toast.sucesso { background: var(--verde-700); } .toast.erro { background: var(--verm-600); }
 .toast.info { background: var(--azul-700); } .toast.aviso { background: var(--amar-500); color: #111; }
-@keyframes entra { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes entra { from { transform: translateY(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---------- Tabelas ---------- */
 .tabela-wrap { overflow-x: auto; border-radius: var(--raio-sm); }

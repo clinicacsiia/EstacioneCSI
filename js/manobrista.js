@@ -78,7 +78,7 @@
 
   $('#grupo-categoria').addEventListener('click', ev => { const b = ev.target.closest('[data-cat]'); if (b) { est.categoria = b.dataset.cat; renderCategorias(); } });
   $('#grupo-patio').addEventListener('click', ev => { const b = ev.target.closest('[data-patio]'); if (b) { est.patio = b.dataset.patio; renderPatios(); } });
-  $('#grupo-cor').addEventListener('click', ev => { const b = ev.target.closest('[data-cor]'); if (b) { est.cor = est.cor === b.dataset.cor ? '' : b.dataset.cor; renderCores(); } });
+  $('#grupo-cor').addEventListener('click', ev => { const b = ev.target.closest('[data-cor]'); if (b) { est.cor = est.cor === b.dataset.cor ? '' : b.dataset.cor; if (est.cor) limparErroCor(); renderCores(); } });
   $('#grupo-avarias').addEventListener('click', ev => {
     const b = ev.target.closest('[data-avaria]'); if (!b) return;
     const a = b.dataset.avaria;
@@ -102,7 +102,6 @@
     if (nFotos) av.push(plural(nFotos, 'foto', 'fotos'));
     set('res-avarias', av.join(' · '));
     set('res-objetos', $('#objetos-valor').value.trim() ? 'informado' : '');
-    set('res-veiculo', [$('#modelo').value.trim(), est.cor].filter(Boolean).join(' · '));
     const cpfDigitos = $('#cpf').value.replace(/\D/g, ''), cpfRuim = cpfDigitos.length > 0 && !R.cpfValido(cpfDigitos);
     set('res-paciente', cpfRuim ? 'CPF a corrigir' : [$('#telefone').value.trim() ? 'telefone' : '', cpfDigitos ? 'CPF' : ''].filter(Boolean).join(' · '), cpfRuim);
     set('res-extras', $('#obs').value.trim() ? 'preenchida' : '');
@@ -117,6 +116,13 @@
     calcularInfoPlaca();
     inPlaca.setAttribute('aria-invalid', String($('#placa-info').classList.contains('erro')));
   }
+
+  // ----- modelo e cor são obrigatórios: o erro some assim que o campo é preenchido -----
+  const inModelo = $('#modelo');
+  function marcarErroCor(msg) { $('#cor-info').className = 'dica erro'; $('#cor-info').textContent = msg; }
+  function limparErroModelo() { inModelo.setAttribute('aria-invalid', 'false'); $('#modelo-info').className = 'dica'; $('#modelo-info').textContent = ''; }
+  function limparErroCor() { $('#cor-info').className = 'dica'; $('#cor-info').textContent = ''; }
+  inModelo.addEventListener('input', () => { if (inModelo.value.trim()) limparErroModelo(); });
 
   // ----- placa repetida: puxa os dados da última visita (só preenche o que está vazio) -----
   const ROTULO_AUTO = { categoria: 'tipo', modelo: 'modelo', cor: 'cor', telefone: 'telefone', cpf: 'CPF' };
@@ -152,6 +158,8 @@
     if (u.cpf && vazio('cpf')) { const f = R.formatarCpf(u.cpf); $('#cpf').value = f; auto.cpf = f; }
     if (u.cor && !est.cor) { est.cor = u.cor; auto.cor = u.cor; }
     if (u.categoria && u.categoria !== est.categoria && est.categoria === 'carro' && Dados.config.tabela[u.categoria]) { est.categoria = u.categoria; auto.categoria = u.categoria; }
+    if (auto.modelo) limparErroModelo();
+    if (auto.cor) limparErroCor();
     if (Object.keys(auto).length) { renderCategorias(); renderCores(); atualizarInfoCpf(); }
   }
 
@@ -224,8 +232,10 @@
     });
     if (!r.ok) {
       Ui.toast(r.erro, 'erro');
-      const campo = r.campo === 'cpf' ? inCpf : inPlaca;
+      if (r.campo === 'cor') { marcarErroCor(r.erro); $('#grupo-cor button').focus(); return; }
+      const campo = { cpf: inCpf, modelo: inModelo }[r.campo] || inPlaca;
       if (r.campo === 'cpf') $('#det-paciente').open = true; // o campo precisa estar à vista para receber o foco
+      if (r.campo === 'modelo') { $('#modelo-info').className = 'dica erro'; $('#modelo-info').textContent = r.erro; }
       campo.setAttribute('aria-invalid', 'true');
       campo.focus();
       return;
@@ -280,6 +290,7 @@
 
   function limparFormulario() {
     auto = {}; autoChave = null; autoVisita = null;
+    limparErroModelo(); limparErroCor();
     inPlaca.value = ''; chkLivre.checked = false;
     $('#modelo').value = ''; $('#vaga').value = ''; $('#telefone').value = ''; $('#obs').value = '';
     inCpf.value = ''; $('#avarias-desc').value = ''; $('#objetos-valor').value = '';
