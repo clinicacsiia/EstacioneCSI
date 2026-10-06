@@ -18,10 +18,11 @@
     ENTREGUE: 'Entregue', CANCELADO: 'Cancelado'
   };
   var METODOS = { dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Débito', credito: 'Crédito', isento: 'Sem cobrança' };
+  // Na ordem das cores mais vendidas no Brasil: as mais comuns ficam na primeira linha, perto do polegar. "Outra" fica sempre por último.
   var CORES = [
-    ['Branco', '#ffffff'], ['Preto', '#111111'], ['Prata', '#c0c0c0'], ['Cinza', '#808080'],
-    ['Vermelho', '#dc2626'], ['Azul', '#2563eb'], ['Verde', '#16a34a'], ['Amarelo', '#facc15'],
-    ['Marrom', '#7c4a25'], ['Outra', 'linear-gradient(135deg,#f472b6,#60a5fa)']
+    ['Branco', '#ffffff'], ['Preto', '#111111'], ['Cinza', '#808080'], ['Prata', '#c0c0c0'],
+    ['Vermelho', '#dc2626'], ['Azul', '#2563eb'], ['Marrom', '#7c4a25'], ['Verde', '#16a34a'],
+    ['Amarelo', '#facc15'], ['Outra', 'linear-gradient(135deg,#f472b6,#60a5fa)']
   ];
   var AVARIAS = ['Arranhão', 'Amassado', 'Vidro / farol', 'Pneu / roda', 'Retrovisor']; // objetos de valor têm campo próprio (ticket.objetosValor)
   var MOTIVOS_DESCONTO = ['Convênio / lojista', 'Cortesia da gerência', 'Cliente frequente / VIP', 'Erro operacional', 'Outro'];

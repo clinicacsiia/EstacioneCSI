@@ -35,6 +35,19 @@
           <div class="grade-3" id="grupo-categoria"></div>
         </fieldset>
 
+        <div class="card">
+          <label class="rotulo" for="modelo">Modelo <span class="obrig">(obrigatório)</span></label>
+          <input id="modelo" type="text" list="lista-modelos" maxlength="30" enterkeyhint="next" placeholder="Ex.: Onix, HB20, Strada"
+                 aria-required="true" aria-describedby="modelo-info" aria-invalid="false">
+          <datalist id="lista-modelos"></datalist>
+          <div id="modelo-info" class="dica" aria-live="polite"></div>
+          <fieldset class="grupo mt" aria-describedby="cor-info">
+            <legend class="rotulo">Cor <span class="obrig">(obrigatório)</span></legend>
+            <div class="chips" id="grupo-cor"></div>
+          </fieldset>
+          <div id="cor-info" class="dica" aria-live="polite"></div>
+        </div>
+
         <fieldset class="card grupo">
           <legend class="rotulo">Onde o carro vai ficar</legend>
           <div class="grade-2" id="grupo-patio"></div>
@@ -63,17 +76,6 @@
           <summary><span class="sum-titulo">Objetos de valor no carro</span><span class="sum-estado" id="res-objetos"></span></summary>
           <label class="rotulo mt" for="objetos-valor">O paciente deixou algum objeto de valor no carro?</label>
           <textarea id="objetos-valor" maxlength="200" placeholder="Ex.: carteira no porta-luvas, celular no banco do carona"></textarea>
-        </details>
-
-        <details class="card" id="det-veiculo">
-          <summary><span class="sum-titulo">Modelo e cor</span><span class="sum-estado" id="res-veiculo"></span></summary>
-          <label class="rotulo mt" for="modelo">Modelo <span class="mudo">(ajuda na entrega)</span></label>
-          <input id="modelo" type="text" list="lista-modelos" maxlength="30" enterkeyhint="next" placeholder="Ex.: Onix, HB20, Strada">
-          <datalist id="lista-modelos"></datalist>
-          <fieldset class="grupo mt">
-            <legend class="rotulo">Cor</legend>
-            <div class="chips" id="grupo-cor"></div>
-          </fieldset>
         </details>
 
         <details class="card" id="det-paciente">

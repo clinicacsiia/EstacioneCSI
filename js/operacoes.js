@@ -56,6 +56,8 @@
       if (!patio || patio.ativo === false) return erro('Escolha o pátio onde o veículo vai ficar.');
       var cpf = digitos(d.cpf);
       if (cpf && !R.cpfValido(cpf)) return erro('CPF inválido.', { campo: 'cpf' });
+      if (!texto(d.modelo)) return erro('Informe o modelo do veículo.', { campo: 'modelo' });
+      if (!texto(d.cor)) return erro('Escolha a cor do veículo.', { campo: 'cor' });
       var cat = Dados.config.tabela[d.categoria] ? d.categoria : 'carro';
       var u = Auth.atual(), agora = Date.now();
       var mens = R.mensalistaVigente(chave, Dados.mensalistas, agora);
