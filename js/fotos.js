@@ -143,8 +143,8 @@
   function botoesAdicionar(aoEscolher) {
     var el = doc.createElement('div');
     el.className = 'fotos-botoes';
-    el.innerHTML = '<button type="button" class="btn btn-contorno" data-f="camera">📷 Tirar foto</button>' +
-      '<button type="button" class="btn btn-contorno" data-f="galeria">🖼️ Galeria</button>' +
+    el.innerHTML = '<button type="button" class="btn btn-contorno" data-f="camera"><span aria-hidden="true">📷</span> Tirar foto</button>' +
+      '<button type="button" class="btn btn-contorno" data-f="galeria"><span aria-hidden="true">🖼️</span> Galeria</button>' +
       '<input type="file" accept="image/*" capture="environment" hidden data-in="camera">' +
       '<input type="file" accept="image/*" multiple hidden data-in="galeria">';
     ['camera', 'galeria'].forEach(function (k) {

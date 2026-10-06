@@ -10,83 +10,96 @@
 <body class="app com-tabbar oculto">
   <header id="topo" class="topo"></header>
 
-  <main class="conteudo">
+  <main class="conteudo" id="conteudo">
+    <h1 class="so-leitor" id="titulo-aba" tabindex="-1">Nova entrada de veículo</h1>
 
     <!-- ===== ABA: NOVA ENTRADA ===== -->
     <section id="aba-entrada" class="aba">
       <form id="form-entrada" class="col-centro" autocomplete="off" novalidate>
 
         <div id="fotos-pendentes" hidden></div>
-        <div id="ultimo-ticket" class="card ok" hidden></div>
+        <div id="ultimo-ticket" class="card ok" role="status" hidden></div>
 
+        <!-- Essencial: sempre à vista, cabe na tela do celular sem rolar muito -->
         <div class="card">
-          <label class="rotulo" for="placa">Placa do veículo</label>
+          <label class="rotulo" for="placa">Placa do veículo <span class="obrig">(obrigatório)</span></label>
           <input id="placa" class="input-placa" type="text" maxlength="10" autocapitalize="characters"
-                 autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="ABC-1234">
+                 autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="ABC-1234"
+                 aria-describedby="placa-info" aria-invalid="false">
           <div id="placa-info" class="dica" aria-live="polite"></div>
           <label class="check" id="linha-livre" hidden><input type="checkbox" id="placa-livre"> Placa fora do padrão (estrangeira, etc.)</label>
         </div>
 
-        <div class="card">
-          <div class="rotulo">Tipo de veículo</div>
+        <fieldset class="card grupo">
+          <legend class="rotulo">Tipo de veículo</legend>
           <div class="grade-3" id="grupo-categoria"></div>
-        </div>
+        </fieldset>
 
-        <div class="card">
-          <label class="rotulo" for="modelo">Modelo <span class="mudo">(ajuda na entrega)</span></label>
+        <fieldset class="card grupo">
+          <legend class="rotulo">Onde o carro vai ficar</legend>
+          <div class="grade-2" id="grupo-patio"></div>
+          <label class="rotulo mt" for="vaga">Vaga / posição <span class="mudo">(opcional)</span></label>
+          <input id="vaga" type="text" maxlength="10" autocapitalize="characters" enterkeyhint="next" placeholder="Ex.: A-12">
+        </fieldset>
+
+        <!-- Opcional: recolhido; o resumo ao lado mostra o que já foi preenchido -->
+        <h2 class="titulo-opcionais">Se der tempo <span class="mudo">(opcional)</span></h2>
+
+        <details class="card" id="det-avarias">
+          <summary><span class="sum-titulo">Avarias e fotos</span><span class="sum-estado" id="res-avarias"></span></summary>
+          <fieldset class="grupo mt">
+            <legend class="rotulo">O carro já tem arranhão, amassado ou outra avaria? <span class="mudo">(marque o que já existe)</span></legend>
+            <div class="chips" id="grupo-avarias"></div>
+          </fieldset>
+          <label class="rotulo mt" for="avarias-desc">Descreva a avaria <span class="mudo">(opcional)</span></label>
+          <textarea id="avarias-desc" maxlength="200" placeholder="Ex.: arranhão na porta direita, amassado no para-choque traseiro"></textarea>
+          <div id="bloco-fotos">
+            <div class="rotulo mt" id="rot-fotos">Fotos <span class="mudo">(avarias ou qualquer problema)</span></div>
+            <div id="fotos-entrada" role="group" aria-labelledby="rot-fotos"></div>
+          </div>
+        </details>
+
+        <details class="card" id="det-objetos">
+          <summary><span class="sum-titulo">Objetos de valor no carro</span><span class="sum-estado" id="res-objetos"></span></summary>
+          <label class="rotulo mt" for="objetos-valor">O paciente deixou algum objeto de valor no carro?</label>
+          <textarea id="objetos-valor" maxlength="200" placeholder="Ex.: carteira no porta-luvas, celular no banco do carona"></textarea>
+        </details>
+
+        <details class="card" id="det-veiculo">
+          <summary><span class="sum-titulo">Modelo e cor</span><span class="sum-estado" id="res-veiculo"></span></summary>
+          <label class="rotulo mt" for="modelo">Modelo <span class="mudo">(ajuda na entrega)</span></label>
           <input id="modelo" type="text" list="lista-modelos" maxlength="30" enterkeyhint="next" placeholder="Ex.: Onix, HB20, Strada">
           <datalist id="lista-modelos"></datalist>
-          <div class="rotulo mt">Cor</div>
-          <div class="chips" id="grupo-cor"></div>
-        </div>
+          <fieldset class="grupo mt">
+            <legend class="rotulo">Cor</legend>
+            <div class="chips" id="grupo-cor"></div>
+          </fieldset>
+        </details>
 
-        <div class="card">
-          <div class="rotulo">Paciente <span class="mudo">(opcional)</span></div>
-          <div class="linha-campos">
+        <details class="card" id="det-paciente">
+          <summary><span class="sum-titulo">Telefone e CPF do paciente</span><span class="sum-estado" id="res-paciente"></span></summary>
+          <div class="linha-campos mt">
             <div class="campo">
               <label class="rotulo" for="telefone">Telefone</label>
               <input id="telefone" type="tel" inputmode="tel" maxlength="15" enterkeyhint="next" placeholder="(11) 99999-9999">
             </div>
             <div class="campo">
               <label class="rotulo" for="cpf">CPF</label>
-              <input id="cpf" type="text" inputmode="numeric" maxlength="14" autocomplete="off" enterkeyhint="next" placeholder="000.000.000-00">
+              <input id="cpf" type="text" inputmode="numeric" maxlength="14" autocomplete="off" enterkeyhint="next" placeholder="000.000.000-00"
+                     aria-describedby="cpf-info" aria-invalid="false">
               <div id="cpf-info" class="dica" aria-live="polite"></div>
             </div>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="rotulo">Estado do veículo <span class="mudo">(antes de levar para a vaga)</span></div>
-          <label class="rotulo" for="avarias-desc">O carro já tem arranhão, amassado ou outra avaria?</label>
-          <textarea id="avarias-desc" maxlength="200" placeholder="Ex.: arranhão na porta direita, amassado no para-choque traseiro"></textarea>
-          <div class="rotulo mt">Marque o que já existe</div>
-          <div class="chips" id="grupo-avarias"></div>
-          <div id="bloco-fotos">
-            <div class="rotulo mt">Fotos <span class="mudo">(avarias ou qualquer problema)</span></div>
-            <div id="fotos-entrada"></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <label class="rotulo" for="objetos-valor">O paciente deixou algum objeto de valor no carro?</label>
-          <textarea id="objetos-valor" maxlength="200" placeholder="Ex.: carteira no porta-luvas, celular no banco do carona"></textarea>
-        </div>
-
-        <div class="card">
-          <div class="rotulo">Onde o carro vai ficar</div>
-          <div class="grade-2" id="grupo-patio"></div>
-          <label class="rotulo mt" for="vaga">Vaga / posição <span class="mudo">(opcional)</span></label>
-          <input id="vaga" type="text" maxlength="10" autocapitalize="characters" enterkeyhint="next" placeholder="Ex.: A-12">
-        </div>
+        </details>
 
         <details class="card" id="det-extras">
-          <summary>Outra observação</summary>
+          <summary><span class="sum-titulo">Outra observação</span><span class="sum-estado" id="res-extras"></span></summary>
           <label class="rotulo mt" for="obs">Observação</label>
           <textarea id="obs" maxlength="200" placeholder="Qualquer outra informação sobre o veículo"></textarea>
         </details>
 
         <div class="barra-acao">
-          <button type="submit" class="btn btn-sucesso btn-enorme" id="btn-imprimir">🖨️ IMPRIMIR TICKET</button>
+          <button type="submit" class="btn btn-sucesso btn-enorme" id="btn-imprimir"><span aria-hidden="true">🖨️</span> IMPRIMIR TICKET</button>
         </div>
       </form>
     </section>
@@ -94,9 +107,9 @@
     <!-- ===== ABA: BUSCAR (fila) ===== -->
     <section id="aba-fila" class="aba" hidden>
       <div class="col-centro">
-        <h2 class="titulo-secao">🔑 Para buscar <span class="contador zero" id="cont-fila">0</span></h2>
+        <h2 class="titulo-secao"><span aria-hidden="true">🔑</span> Para buscar <span class="contador zero" id="cont-fila">0</span></h2>
         <div class="lista" id="lista-fila"></div>
-        <h2 class="titulo-secao mt">🏃 A caminho <span class="contador zero" id="cont-caminho">0</span></h2>
+        <h2 class="titulo-secao mt"><span aria-hidden="true">🏃</span> A caminho <span class="contador zero" id="cont-caminho">0</span></h2>
         <div class="lista" id="lista-caminho"></div>
       </div>
     </section>
@@ -107,7 +120,7 @@
         <div class="card">
           <label class="rotulo" for="busca-patio">Procurar veículo (placa, ticket ou modelo)</label>
           <input id="busca-patio" type="search" class="input-busca" autocomplete="off" autocapitalize="characters" placeholder="ABC ou 1042">
-          <div class="chips mt" id="filtro-patio"></div>
+          <div class="chips mt" id="filtro-patio" role="group" aria-label="Filtrar por pátio"></div>
         </div>
         <div class="lista" id="lista-patio"></div>
       </div>
@@ -116,11 +129,11 @@
     <!-- ===== ABA: FECHAMENTO (só o que o próprio manobrista fez) ===== -->
     <section id="aba-fechamento" class="aba" hidden>
       <div class="col-centro">
-        <h2 class="titulo-secao">📋 Meu fechamento</h2>
+        <h2 class="titulo-secao"><span aria-hidden="true">📋</span> Meu fechamento</h2>
         <div class="card">
-          <div class="chips" id="filtro-dia"></div>
-          <div class="dica">Aqui aparecem só os veículos que você mesmo atendeu, de hoje ou de ontem.</div>
-          <div class="grade-3 mt" id="resumo-fechamento"></div>
+          <div class="chips" id="filtro-dia" role="group" aria-label="Escolher o dia"></div>
+          <div class="dica" id="dica-fechamento">Aqui aparecem só os veículos que você mesmo atendeu, de hoje ou de ontem.</div>
+          <div class="grade-3 mt" id="resumo-fechamento" role="group" aria-label="Resumo do dia"></div>
         </div>
         <div class="lista" id="lista-fechamento"></div>
       </div>
@@ -128,13 +141,13 @@
   </main>
 
   <nav class="tabbar" aria-label="Seções">
-    <button type="button" data-aba="entrada" class="ativo"><span class="emoji" aria-hidden="true">➕</span>Entrada</button>
-    <button type="button" data-aba="fila"><span class="emoji" aria-hidden="true">🔑</span>Buscar<span class="marca-num zero" id="marca-fila">0</span></button>
-    <button type="button" data-aba="patio"><span class="emoji" aria-hidden="true">🅿️</span>Pátio<span class="marca-num zero" id="marca-patio" style="background:#475569">0</span></button>
+    <button type="button" data-aba="entrada" class="ativo" aria-current="page"><span class="emoji" aria-hidden="true">➕</span>Entrada</button>
+    <button type="button" data-aba="fila"><span class="emoji" aria-hidden="true">🔑</span>Buscar<span class="marca-num zero" id="marca-fila" aria-hidden="true">0</span></button>
+    <button type="button" data-aba="patio"><span class="emoji" aria-hidden="true">🅿️</span>Pátio<span class="marca-num marca-cinza zero" id="marca-patio" aria-hidden="true">0</span></button>
     <button type="button" data-aba="fechamento"><span class="emoji" aria-hidden="true">📋</span>Fechamento</button>
   </nav>
 
-  <div id="toasts" aria-live="polite"></div>
+  <div id="toasts" aria-live="polite" aria-atomic="false"></div>
 
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>

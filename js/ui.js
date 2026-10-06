@@ -67,8 +67,14 @@
       if (!c) { c = criar('div'); c.id = 'toasts'; c.setAttribute('aria-live', 'polite'); doc.body.appendChild(c); }
       var t = criar('div', 'toast ' + (tipo || 'sucesso'));
       t.textContent = msg;
+      // erros e avisos interrompem o leitor de tela; tocar na mensagem a fecha
+      if (tipo === 'erro' || tipo === 'aviso') t.setAttribute('role', 'alert');
+      t.title = 'Toque para fechar';
+      t.addEventListener('click', function () { if (t.parentNode) t.parentNode.removeChild(t); });
       c.appendChild(t);
-      global.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, ms || (tipo === 'erro' ? 5500 : 3200));
+      // tempo de leitura proporcional ao tamanho do texto (mínimo maior para erros)
+      var lido = Math.max(tipo === 'erro' ? 7000 : 4000, String(msg).length * 70);
+      global.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, ms ? Math.max(ms, lido) : lido);
     },
 
     // ---------- Modal ----------
