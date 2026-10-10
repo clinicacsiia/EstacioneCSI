@@ -125,6 +125,38 @@ Para mudar o limite, edite o número em `limite_fotos_bytes()` no `schema.sql` e
 
 ---
 
+## Entrada do manobrista
+
+- **Modelo e cor são obrigatórios** para imprimir o ticket (as cores aparecem na ordem das mais vendidas no Brasil).
+- **Placa já conhecida:** ao digitar uma placa que já passou pelo estacionamento, o formulário preenche os dados da última visita.
+
+## Manobrista que recebe pagamentos
+
+**Não precisa rodar o `schema.sql` de novo** (é só mudança nas telas; a permissão fica gravada no cadastro do usuário).
+
+- **Liberar:** *Administração → Usuários → Editar* (ou ao cadastrar) um usuário de perfil **Manobrista** → marque **"Pode receber pagamentos"**. Na lista aparece o selo **💵 recebe**. A opção só existe para o perfil Manobrista.
+- **Como o manobrista usa:** aba **Buscar** → bloco **Receber e buscar** → digita a placa ou o ticket → **RECEBER** (dinheiro, PIX, débito ou crédito, com troco). Se não houver caixa aberto, o sistema pede o fundo de troco e abre na hora. No fim, o botão **🔑 Buscar agora** já manda buscar o carro. Em **Fechamento → Meu caixa** ele vê o que recebeu e **fecha o caixa no fim do turno**.
+- **Continua só com caixa/gerente:** desconto, ticket perdido, sangria e nota fiscal.
+- **Auditoria:** liberar ou retirar a permissão fica registrado (*Usuário criado/alterado*).
+- **Atenção:** essa regra é aplicada pelas telas (como as demais permissões de ticket e caixa). O servidor só barra por conta própria usuários, configurações, fotos e nota fiscal. Por isso libere só manobristas de confiança.
+
+## Conferir se o banco está atualizado
+
+Em **SQL Editor** (ou me peça para conferir pelo conector do Supabase). O esperado hoje é **11 tabelas** no schema `estaciona`, todas com RLS ligado:
+
+```sql
+select c.relname as tabela, c.relrowsecurity as rls
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'estaciona' and c.relkind = 'r' order by 1;
+-- esperado: controle, copias, deltas, fotos, notas, objetos, propriedades, registros, segredos, sessoes, tentativas
+
+select public.estaciona_api('GET', '/api/painel', '', '{}'::jsonb);   -- deve voltar "s": 200
+```
+
+Regra prática: **só é preciso rodar o `schema.sql` de novo quando o commit mexer em `supabase/schema.sql`** (`git log -- supabase/schema.sql`). Mudanças só em `html`, `css` e `js` entram sozinhas com o merge na `main`. Última conferência: 10/10/2026, banco e `schema.sql` em sincronia (11 tabelas, 73 funções, API respondendo 200).
+
+---
+
 ## O que mudou para quem usa
 
 - **Mais rápido:** o esperado é cada gravação levar de 0,15 a 0,3 s (no Google eram ~2 s). Numa simulação com 150 ms por chamada, registrar uma entrada levou ~0,7 s (antes ~6 s). O tempo real depende da sua internet e da distância até o servidor do Supabase (o seu projeto está no Canadá). As telas atualizam sozinhas a cada ~3 s.
