@@ -109,6 +109,16 @@
     <!-- ===== ABA: BUSCAR (fila) ===== -->
     <section id="aba-fila" class="aba" hidden>
       <div class="col-centro">
+        <!-- só aparece para o manobrista que o administrador liberou para receber -->
+        <div id="bloco-receber" hidden>
+          <h2 class="titulo-secao"><span aria-hidden="true">💵</span> Receber e buscar <span class="contador zero" id="cont-receber">0</span></h2>
+          <div class="card">
+            <label class="rotulo" for="busca-receber">Placa ou número do ticket do cliente</label>
+            <input id="busca-receber" type="search" class="input-busca" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC ou 1042">
+            <div class="dica" id="dica-receber">Digite a placa: o carro aparece e você recebe o pagamento antes de buscar.</div>
+          </div>
+          <div class="lista" id="lista-receber"></div>
+        </div>
         <h2 class="titulo-secao"><span aria-hidden="true">🔑</span> Para buscar <span class="contador zero" id="cont-fila">0</span></h2>
         <div class="lista" id="lista-fila"></div>
         <h2 class="titulo-secao mt"><span aria-hidden="true">🏃</span> A caminho <span class="contador zero" id="cont-caminho">0</span></h2>
@@ -137,6 +147,7 @@
           <div class="dica" id="dica-fechamento">Aqui aparecem só os veículos que você mesmo atendeu, de hoje ou de ontem.</div>
           <div class="grade-3 mt" id="resumo-fechamento" role="group" aria-label="Resumo do dia"></div>
         </div>
+        <div class="card mt" id="bloco-caixa" hidden></div>
         <div class="lista" id="lista-fechamento"></div>
       </div>
     </section>
@@ -161,6 +172,7 @@
   <script src="js/impressao.js"></script>
   <script src="js/fotos.js"></script>
   <script src="js/ficha.js"></script>
+  <script src="js/pagamento.js"></script>
   <script src="js/manobrista.js"></script>
 </body>
 </html>
