@@ -111,6 +111,8 @@
 
   // ----- placa -----
   const inPlaca = $('#placa'), chkLivre = $('#placa-livre');
+  const btnPlacaCam = $('#btn-placa-cam');
+  if (btnPlacaCam && navigator.mediaDevices) { btnPlacaCam.hidden = false; btnPlacaCam.addEventListener('click', lerPlacaCamera); }
 
   function atualizarInfoPlaca() {
     calcularInfoPlaca();
@@ -565,6 +567,119 @@
       m.fechar();
       Api.falha('Não consegui usar a câmera: ' + (e.message || e.name));
       Ui.toast(Api.MSG_ERRO, 'erro');
+    }
+  }
+
+  // ============================================================
+  //  LER PLACA PELA FOTO (OCR) — preenche placa e cor automaticamente
+  // ============================================================
+  let tesseractCarregando = null;
+  /** Carrega a biblioteca de OCR (Tesseract.js) só na primeira vez que é usada. */
+  function carregarTesseract() {
+    if (window.Tesseract) return Promise.resolve();
+    if (tesseractCarregando) return tesseractCarregando;
+    tesseractCarregando = new Promise((ok, falha) => {
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js';
+      s.onload = () => ok();
+      s.onerror = () => { tesseractCarregando = null; falha(new Error('Não consegui carregar o leitor de placas (sem internet?).')); };
+      document.head.appendChild(s);
+    });
+    return tesseractCarregando;
+  }
+
+  /** Procura, dentro do texto lido pelo OCR, um trecho de 7 caracteres no formato de placa (antiga ou Mercosul). */
+  function extrairPlacaDoTexto(texto) {
+    const limpo = String(texto || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    for (let i = 0; i + 7 <= limpo.length; i++) {
+      const trecho = limpo.slice(i, i + 7);
+      if (/^[A-Z]{3}\d{4}$/.test(trecho) || /^[A-Z]{3}\d[A-Z]\d{2}$/.test(trecho)) return trecho;
+    }
+    return '';
+  }
+
+  /** Cor média da foto (ignora pixels muito escuros/claros, que costumam ser sombra/reflexo), comparada às cores da lista. */
+  function corDominanteDaFoto(canvas) {
+    const g = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    // só a faixa central: é onde a lataria do carro costuma preencher o quadro (evita chão/céu nas bordas)
+    const fx = Math.round(w * 0.2), fy = Math.round(h * 0.25), fw = Math.round(w * 0.6), fh = Math.round(h * 0.5);
+    const dados = g.getImageData(fx, fy, Math.max(1, fw), Math.max(1, fh)).data;
+    let r = 0, gg = 0, b = 0, n = 0;
+    for (let i = 0; i < dados.length; i += 4) {
+      const lum = (dados[i] + dados[i + 1] + dados[i + 2]) / 3;
+      if (lum < 15 || lum > 245) continue; // preto/branco "puro" de sombra ou reflexo de luz
+      r += dados[i]; gg += dados[i + 1]; b += dados[i + 2]; n++;
+    }
+    if (!n) return '';
+    r /= n; gg /= n; b /= n;
+    const paleta = {
+      Branco: [255, 255, 255], Preto: [17, 17, 17], Cinza: [128, 128, 128], Prata: [192, 192, 192],
+      Vermelho: [220, 38, 38], Azul: [37, 99, 235], Marrom: [124, 74, 37], Verde: [22, 163, 74], Amarelo: [250, 204, 21]
+    };
+    let melhor = '', menorDist = Infinity;
+    for (const nome in paleta) {
+      const [pr, pg, pb] = paleta[nome];
+      const dist = (r - pr) ** 2 + (gg - pg) ** 2 + (b - pb) ** 2;
+      if (dist < menorDist) { menorDist = dist; melhor = nome; }
+    }
+    return melhor;
+  }
+
+  async function lerPlacaCamera() {
+    let stream = null, ativo = true;
+    const m = Ui.modal({
+      titulo: 'Foto da placa', largura: 'sm',
+      html: '<video id="plc-video" aria-label="Imagem da câmera" playsinline muted style="width:100%;border-radius:12px;background:#000;min-height:180px"></video>' +
+        '<div class="dica" id="plc-msg" role="status">Centralize a placa e toque em Capturar.</div>',
+      aoFechar: () => { ativo = false; if (stream) stream.getTracks().forEach(t => t.stop()); },
+      botoes: [
+        { rotulo: 'Cancelar', classe: 'btn-contorno', aoClicar: mm => mm.fechar() },
+        { id: 'capturar', rotulo: '📷 Capturar', classe: 'btn-primario', padrao: true, aoClicar: () => capturar() }
+      ]
+    });
+    const msg = $('#plc-msg', m.corpo);
+    let v;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (!ativo) { stream.getTracks().forEach(t => t.stop()); return; }
+      v = $('#plc-video', m.corpo); v.srcObject = stream; await v.play();
+    } catch (e) {
+      m.fechar();
+      Api.falha('Não consegui usar a câmera: ' + (e.message || e.name));
+      Ui.toast(Api.MSG_ERRO, 'erro');
+      return;
+    }
+
+    async function capturar() {
+      if (!ativo || !v.videoWidth) return;
+      m.botao('capturar').disabled = true;
+      const canvas = document.createElement('canvas');
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+      canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      msg.textContent = 'Lendo a placa, aguarde...';
+      try {
+        await carregarTesseract();
+        const cor = corDominanteDaFoto(canvas);
+        const { data } = await window.Tesseract.recognize(canvas, 'eng', {
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+        });
+        if (!ativo) return;
+        const placa = extrairPlacaDoTexto(data && data.text);
+        m.fechar();
+        if (placa) {
+          inPlaca.value = placa; atualizarInfoPlaca();
+        }
+        if (cor) { est.cor = cor; limparErroCor(); renderCores(); }
+        if (placa && cor) Ui.toast(`Lemos a placa ${R.validarPlaca(placa, true).placa} e a cor ${cor} pela foto. Confira.`, 'info', 6000);
+        else if (placa) Ui.toast(`Lemos a placa ${R.validarPlaca(placa, true).placa} pela foto. Confira a cor.`, 'info', 6000);
+        else Ui.toast('Não consegui ler a placa nessa foto. Tente de novo ou digite manualmente.' + (cor ? ' Preenchi a cor (' + cor + ').' : ''), 'aviso', 6000);
+      } catch (e) {
+        if (!ativo) return;
+        m.fechar();
+        Ui.toast(e.message || 'Não consegui ler a foto.', 'erro');
+      }
     }
   }
 
